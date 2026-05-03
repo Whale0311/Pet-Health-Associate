@@ -1,0 +1,17 @@
+# 1. Các thư mục dữ liệu siêu nặng (Đã xử lý)
+DogMoveData.csv/
+*.csv
+
+# 2. Thư mục thư viện cài nhầm ở ngoài cùng
+node_modules/
+
+# 3. Các file tài liệu cá nhân, báo cáo (Không thuộc mã nguồn)
+*.pdf
+
+# 4. Các file nén tải về (Ví dụ: thư viện Edge Impulse)
+*.zip
+*.rar
+*.tar.gz
+
+# 5. Bỏ qua các biến môi trường nếu có lỡ tạo ở ngoài
+.env
