@@ -17,8 +17,7 @@ router.post('/', authenticateToken, async (req, res) => {
         const healthLogQuery = `INSERT INTO pet_health_logs (pet_id, behavior_code, heart_rate, temp_celsius, humidity) VALUES ($1, $2, $3, $4, $5) RETURNING *;`;
         const result = await pool.query(healthLogQuery, [pet_id, behavior_code, heart_rate, temp_celsius, humidity]);
 
-        // Sử dụng req.io được truyền từ server.js
-        req.io.emit('new_health_data', result.rows[0]);
+        req.io.emit(`new_health_data_${pet_id}`, result.rows[0]);
 
         let alertTitle = null;
         let alertMessage = null;

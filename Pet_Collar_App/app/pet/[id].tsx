@@ -9,6 +9,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Image, ImageBackground, InteractionManager, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { BleManager } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Dimensions } from 'react-native';
+import { BarChart } from 'react-native-chart-kit';
 import io from 'socket.io-client';
 
 const bleManager = new BleManager();
@@ -51,7 +53,8 @@ export default function PetDashboardScreen() {
   const [heartRate, setHeartRate] = useState<number | string>('--');
   const [temperature, setTemperature] = useState<string>('--');
   const [behaviorCode, setBehaviorCode] = useState<number>(0); 
-
+  const [activeTab, setActiveTab] = useState<'HR' | 'TEMP'>('HR');
+  const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   // --- STATE MODAL EDIT ---
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState('');
@@ -146,14 +149,27 @@ export default function PetDashboardScreen() {
   useEffect(() => {
     let socket: any;
 
-    const setupSocketAndNotifications = async () => {
-      // 1. Xin quyền thông báo
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Quyền thông báo', 'Hãy bật thông báo để nhận cảnh báo sức khỏe của bé cưng!');
+    const fetchHistoryAndSetupSocket = async () => {
+      // 1. Tải lịch sử dữ liệu (10 lần gần nhất)
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        const historyResponse = await axios.get(`https://pet-collar-backend.onrender.com/api/health-logs/${petId}/health-logs`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (historyResponse.data.status === 'success') {
+          setHistoryLogs(historyResponse.data.data);
+        }
+      } catch (error) {
+        console.log("Lỗi tải lịch sử:", error);
       }
 
-      // 2. Lấy User ID để nghe đúng kênh (Channel)
+      // 2. Xin quyền thông báo
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Quyền thông báo', 'Hãy bật thông báo để nhận cảnh báo sức khỏe!');
+      }
+
+      // 3. Khởi tạo Socket
       const userInfoString = await AsyncStorage.getItem('userInfo');
       if (userInfoString) {
         const user = JSON.parse(userInfoString);
@@ -161,27 +177,41 @@ export default function PetDashboardScreen() {
 
         socket = io('https://pet-collar-backend.onrender.com'); 
 
-        // 4. Lắng nghe kênh cảnh báo riêng của User này
+        // Nghe cảnh báo khẩn cấp
         socket.on(`new_alert_user_${userId}`, (alertData: any) => {
           Notifications.scheduleNotificationAsync({
-            content: {
-              title: alertData.title, 
-              body: alertData.message, 
-              sound: true,
-            },
-            trigger: null, // Bắn thông báo ngay lập tức
+            content: { title: alertData.title, body: alertData.message, sound: true },
+            trigger: null,
+          });
+        });
+
+        // 📡 NGHE DỮ LIỆU SỨC KHỎE TỪ ĐIỆN THOẠI 1 BẮN LÊN (VAI TRÒ NGƯỜI QUAN SÁT)
+        socket.on(`new_health_data_${petId}`, (newData: any) => {
+          // Nếu ĐT này đang KHÔNG kết nối BLE, thì lấy số từ Server đắp vào giao diện luôn
+          setConnectionStatus((currentStatus) => {
+            if (currentStatus !== 'Đã kết nối') {
+              setHeartRate(newData.heart_rate);
+              setTemperature(newData.temp_celsius);
+              setBehaviorCode(newData.behavior_code);
+            }
+            return currentStatus;
+          });
+
+          // Cập nhật biểu đồ (thêm điểm mới vào mảng, giữ tối đa 10 điểm)
+          setHistoryLogs((prev) => {
+            const updated = [newData, ...prev];
+            return updated.slice(0, 10); 
           });
         });
       }
     };
 
-    setupSocketAndNotifications();
+    fetchHistoryAndSetupSocket();
 
-    // Dọn dẹp kết nối khi thoát trang
     return () => {
       if (socket) socket.disconnect();
     };
-  }, []);
+  }, [petId]);
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       connectToESP32();
@@ -400,7 +430,50 @@ export default function PetDashboardScreen() {
               <Text style={styles.cardTitle}>Nhiệt độ</Text>
             </View>
           </View>
+          <View style={styles.chartCard}>
+            <View style={styles.chartTabs}>
+              <TouchableOpacity style={[styles.chartTabBtn, activeTab === 'HR' && styles.chartTabBtnActive]} onPress={() => setActiveTab('HR')}>
+                <Text style={[styles.chartTabBtnText, activeTab === 'HR' && styles.chartTabBtnTextActive]}>Nhịp tim</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.chartTabBtn, activeTab === 'TEMP' && styles.chartTabBtnActive]} onPress={() => setActiveTab('TEMP')}>
+                <Text style={[styles.chartTabBtnText, activeTab === 'TEMP' && styles.chartTabBtnTextActive]}>Nhiệt độ</Text>
+              </TouchableOpacity>
+            </View>
 
+            {historyLogs.length > 0 ? (
+              <BarChart
+                data={{
+                  labels: [...historyLogs].reverse().map(log => {
+                    const d = new Date(log.timestamp);
+                    return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+                  }),
+                  datasets: [{ data: [...historyLogs].reverse().map(log => activeTab === 'HR' ? log.heart_rate : log.temp_celsius) }]
+                }}
+                width={Dimensions.get("window").width - 90}
+                height={220}
+                yAxisLabel=""
+                yAxisSuffix={activeTab === 'HR' ? " bpm" : " °C"}
+                fromZero={true}
+                showBarTops={false}
+                withInnerLines={true}
+                chartConfig={{
+                  backgroundColor: "#FFF",
+                  backgroundGradientFrom: "#FFF",
+                  backgroundGradientTo: "#FFF",
+                  decimalPlaces: activeTab === 'HR' ? 0 : 1,
+                  color: (opacity = 1) => activeTab === 'HR' ? `rgba(229, 57, 53, ${opacity})` : `rgba(253, 203, 88, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(100, 100, 100, ${opacity})`,
+                  barPercentage: 0.6,
+                  fillShadowGradient: activeTab === 'HR' ? "#E53935" : "#FDCB58",
+                  fillShadowGradientOpacity: 0.8,
+                }}
+                style={{ borderRadius: 16, marginTop: 15 }}
+              />
+            ) : (
+              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40, marginBottom: 40 }}>Chưa có dữ liệu lịch sử</Text>
+            )}
+          </View>
+          {/* ========================================================== */}
           <View style={styles.behaviorSection}>
             <Text style={styles.sectionTitle}>Hoạt động hiện tại</Text>
             <View style={styles.behaviorBox}>
@@ -421,6 +494,13 @@ export default function PetDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  // --- STYLE BIỂU ĐỒ ---
+  chartCard: { backgroundColor: '#FFF', borderRadius: 25, padding: 20, marginTop: 25, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, borderWidth: 1, borderColor: '#F5F5F5' },
+  chartTabs: { flexDirection: 'row', backgroundColor: '#F5F5F5', borderRadius: 20, padding: 5 },
+  chartTabBtn: { flex: 1, paddingVertical: 10, borderRadius: 15, alignItems: 'center' },
+  chartTabBtnActive: { backgroundColor: '#D7CCC8' },
+  chartTabBtnText: { color: '#8D6E63', fontWeight: 'bold' },
+  chartTabBtnTextActive: { color: '#3E2723' },
   container: { flex: 1, backgroundColor: '#F5F5F5' },
   headerImage: { width: '100%', height: 350, backgroundColor: '#D7CCC8' },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10 },
@@ -429,7 +509,7 @@ const styles = StyleSheet.create({
   bleStatus: { flexDirection: 'row', backgroundColor: 'rgba(253, 203, 88, 0.95)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, alignItems: 'center', height: 32, elevation: 2 },
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   bleText: { color: '#3E2723', fontSize: 13, fontWeight: 'bold' },
-
+  
   sheetContainer: { flex: 1, marginTop: -40, backgroundColor: '#FFF', borderTopLeftRadius: 35, borderTopRightRadius: 35, paddingHorizontal: 25, paddingTop: 30 },
   
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
