@@ -252,25 +252,76 @@ export default function HomeScreen() {
   
   const handleSelectDevice = (device: Device) => { bleManager.stopDeviceScan(); setIsScanning(false); setShowScanModal(false); setNewPetMac(device.id); setShowAddPetModal(true); };
   
+  // --- HÀM HỖ TRỢ: Dọn dẹp form sau khi thêm/join thành công ---
+  const resetAddPetForm = () => {
+    setShowAddPetModal(false); 
+    setNewPetName(''); 
+    setNewPetWeight(''); 
+    setNewPetGender('Male'); 
+    setNewPetDob(null); 
+    setNewPetMac(''); 
+    setNewPetImageUri(null); 
+    setNewPetImageBase64(null); 
+    setLoading(true); 
+    loadUserData(); 
+  };
+
+  // --- HÀM JOIN THÚ CƯNG (Khi vòng cổ đã có chủ) ---
+  const handleJoinPet = async (macAddress: string) => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const JOIN_URL = 'https://pet-collar-backend.onrender.com/api/pets/join';
+      
+      const response = await axios.post(JOIN_URL, { mac_address: macAddress }, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+
+      if (response.data.status === 'success') {
+        Alert.alert("Thành công!", "Đã kết nối theo dõi thú cưng cùng người thân.");
+        resetAddPetForm();
+      }
+    } catch (error: any) {
+      Alert.alert("Lỗi", error.response?.data?.message || "Không thể tham gia theo dõi.");
+    }
+  };
+
+  // --- HÀM TẠO THÚ CƯNG MỚI ---
   const handleAddPet = async () => {
     if (!newPetName || !newPetMac) { Alert.alert("Thiếu thông tin", "Nhập tên và quét MAC!"); return; }
     try {
       const token = await AsyncStorage.getItem('userToken');
       const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/pets'; 
-      const payload = { name: newPetName, gender: newPetGender || null, dob: newPetDob ? newPetDob.toISOString().split('T')[0] : null, weight: newPetWeight ? parseFloat(newPetWeight) : null, mac_address: newPetMac, image_url: newPetImageBase64 || null };
+      const payload = { 
+        name: newPetName, 
+        gender: newPetGender || null, 
+        dob: newPetDob ? newPetDob.toISOString().split('T')[0] : null, 
+        weight: newPetWeight ? parseFloat(newPetWeight) : null, 
+        mac_address: newPetMac, 
+        image_url: newPetImageBase64 || null 
+      };
       
       const response = await axios.post(SERVER_URL, payload, { headers: { Authorization: `Bearer ${token}` } });
       
       if (response.data.status === 'success') {
-        Alert.alert("Thành công!", "Đã thêm thú cưng."); 
-        setShowAddPetModal(false); setNewPetName(''); setNewPetWeight(''); setNewPetGender('Male'); setNewPetDob(null); setNewPetMac(''); setNewPetImageUri(null); setNewPetImageBase64(null); 
-        setLoading(true); loadUserData(); 
+        Alert.alert("Thành công!", "Đã thêm thú cưng mới."); 
+        resetAddPetForm();
       }
     } catch (error: any) {
-      if (error.response && error.response.data && error.response.data.message) {
-        Alert.alert("Lỗi", error.response.data.message);
+      const errorMsg = error.response?.data?.message || "";
+      
+      // KIỂM TRA LỖI TRÙNG MAC TỪ BACKEND
+      // (Lưu ý: Chữ "tồn tại" hoặc "already" tùy thuộc vào câu báo lỗi mà Backend của bạn trả về)
+      if (errorMsg.includes("tồn tại") || errorMsg.includes("already") || error.response?.status === 400) {
+        Alert.alert(
+          "Phát hiện vòng cổ",
+          "Vòng cổ này đã được đăng ký trên hệ thống. Bạn có muốn tham gia theo dõi bé cưng này không?",
+          [
+            { text: "Hủy bỏ", style: "cancel" },
+            { text: "Tham gia", onPress: () => handleJoinPet(newPetMac) }
+          ]
+        );
       } else {
-        Alert.alert("Lỗi", "Không thể kết nối với máy chủ.");
+        Alert.alert("Lỗi", errorMsg || "Không thể kết nối với máy chủ.");
       }
     }
   };

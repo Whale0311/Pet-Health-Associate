@@ -27,6 +27,7 @@ export default function TabLayout() {
         name="register"
         options={{
           href: null, 
+          tabBarStyle: { display: 'none' },
         }}
       />
       {/* 3. ẨN LUÔN MÀN HÌNH EXPLORE (Nếu bạn không dùng đến) */}

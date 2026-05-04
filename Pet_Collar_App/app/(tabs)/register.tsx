@@ -30,7 +30,7 @@ export default function RegisterScreen() {
     }
 
     try {
-      const SERVER_URL = 'http://192.168.1.72:3000/api/auth/register';
+      const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/auth/register';
 
       const response = await axios.post(SERVER_URL, {
         full_name: fullName,

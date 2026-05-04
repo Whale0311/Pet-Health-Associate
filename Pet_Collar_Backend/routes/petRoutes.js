@@ -73,5 +73,39 @@ router.get('/:id/health-logs', authenticateToken, async (req, res) => {
         console.error(error); res.status(500).json({ status: "error", message: "Lỗi máy chủ nội bộ" });
     }
 });
+// API: Thêm thú cưng đã có sẵn (dành cho người nhà)
+router.post('/join', authenticateToken, async (req, res) => {
+    try {
+        const { mac_address } = req.body;
+        const userId = req.user.user_id; // Lấy ID người dùng từ Token
 
+        if (!mac_address) {
+            return res.status(400).json({ status: "error", message: "Vui lòng cung cấp địa chỉ MAC!" });
+        }
+
+        // 1. Tìm thú cưng dựa trên MAC
+        const petResult = await pool.query('SELECT id FROM pets WHERE mac_address = $1', [mac_address]);
+        
+        if (petResult.rows.length === 0) {
+            return res.status(404).json({ status: "error", message: "Không tìm thấy thú cưng với địa chỉ MAC này!" });
+        }
+
+        const petId = petResult.rows[0].id;
+
+        // 2. Kiểm tra xem người này đã theo dõi bé này chưa để tránh trùng lặp
+        const checkExist = await pool.query('SELECT * FROM user_pets WHERE user_id = $1 AND pet_id = $2', [userId, petId]);
+        if (checkExist.rows.length > 0) {
+            return res.status(400).json({ status: "error", message: "Bạn đã theo dõi thú cưng này rồi!" });
+        }
+
+        // 3. Liên kết người dùng với thú cưng
+        await pool.query('INSERT INTO user_pets (user_id, pet_id) VALUES ($1, $2)', [userId, petId]);
+
+        res.status(200).json({ status: "success", message: "Đã thêm thú cưng thành công!" });
+
+    } catch (error) {
+        console.error('❌ Lỗi API Join Pet:', error);
+        res.status(500).json({ status: "error", message: "Lỗi máy chủ nội bộ" });
+    }
+});
 module.exports = router;
