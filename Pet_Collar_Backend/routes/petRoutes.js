@@ -54,19 +54,35 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// Hủy theo dõi / Xóa thú cưng
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
-        await pool.query('DELETE FROM pets WHERE pet_id = $1', [req.params.id]);
-        res.json({ status: "success", message: "Đã xóa thú cưng khỏi hệ thống!" });
+        const userId = req.user.user_id; // Lấy ID của người đang bấm nút xóa
+        const petId = req.params.id;
+
+        // 1. Chỉ cắt đứt liên kết giữa người này và thú cưng
+        await pool.query('DELETE FROM user_pets WHERE user_id = $1 AND pet_id = $2', [userId, petId]);
+
+        // 2. Kiểm tra xem thú cưng này còn ai trong nhà theo dõi không?
+        const checkRemaining = await pool.query('SELECT COUNT(*) FROM user_pets WHERE pet_id = $1', [petId]);
+        
+        if (parseInt(checkRemaining.rows[0].count) === 0) {
+            // 3. Nếu không còn ai theo dõi nữa, tiến hành xóa hoàn toàn khỏi hệ thống
+            // (Lưu ý: Nếu database của bạn có cài CASCADE, nó sẽ tự xóa luôn logs và notifications của pet này)
+            await pool.query('DELETE FROM pets WHERE pet_id = $1', [petId]);
+        }
+
+        res.json({ status: "success", message: "Đã xóa/ngừng theo dõi thú cưng thành công!" });
     } catch (error) {
-        console.error(error); res.status(500).json({ status: "error", message: "Lỗi Server" });
+        console.error("Lỗi xóa Pet:", error); 
+        res.status(500).json({ status: "error", message: "Lỗi máy chủ nội bộ" });
     }
 });
 
 // Lấy lịch sử sức khỏe của 1 thú cưng
 router.get('/:id/health-logs', authenticateToken, async (req, res) => {
     try {
-        const query = `SELECT * FROM pet_health_logs WHERE pet_id = $1 ORDER BY timestamp DESC LIMIT 10;`;
+        const query = `SELECT * FROM pet_health_logs WHERE pet_id = $1 ORDER BY timestamp DESC LIMIT 6;`;
         const result = await pool.query(query, [req.params.id]);
         res.json({ status: "success", data: result.rows });
     } catch (error) {

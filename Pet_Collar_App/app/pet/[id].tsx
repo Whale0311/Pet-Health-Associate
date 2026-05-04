@@ -153,7 +153,7 @@ export default function PetDashboardScreen() {
       // 1. Tải lịch sử dữ liệu (10 lần gần nhất)
       try {
         const token = await AsyncStorage.getItem('userToken');
-        const historyResponse = await axios.get(`https://pet-collar-backend.onrender.com/api/health-logs/${petId}/health-logs`, {
+        const historyResponse = await axios.get(`https://pet-collar-backend.onrender.com/api/pets/${petId}/health-logs`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (historyResponse.data.status === 'success') {
