@@ -21,8 +21,7 @@ export default function LoginScreen() {
     }
 
     try {
-      // ⚠️ QUAN TRỌNG: Thay 192.168.1.X bằng địa chỉ IPv4 thật của máy tính bạn
-      const SERVER_URL = 'http://192.168.1.72:3000/api/auth/login'; 
+      const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/auth/login'; 
       
       const response = await axios.post(SERVER_URL, {
         email: email,
@@ -124,20 +123,6 @@ export default function LoginScreen() {
             </TouchableOpacity>
             
           </View>
-
-          {/* Đăng nhập bằng Google */}
-          <View style={styles.socialContainer}>
-            <View style={styles.dividerContainer}>
-              <View style={styles.line} />
-              <Text style={styles.orText}>Or Sign In With</Text>
-              <View style={styles.line} />
-            </View>
-            
-            <TouchableOpacity style={styles.googleButton}>
-              <Ionicons name="logo-google" size={24} color="#DB4437" />
-            </TouchableOpacity>
-          </View>
-
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

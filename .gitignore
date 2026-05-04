@@ -2,7 +2,7 @@
 DogMoveData.csv/
 *.csv
 
-# 2. Thư mục thư viện cài nhầm ở ngoài cùng
+# 2. Thư mục thư viện cài ở ngoài cùng
 node_modules/
 
 # 3. Các file tài liệu cá nhân, báo cáo (Không thuộc mã nguồn)

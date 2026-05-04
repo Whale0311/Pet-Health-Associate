@@ -1,56 +1,42 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-
+import React from 'react';
 export default function TabLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: '#FDCB58', // Màu vàng cam khi được chọn
-        tabBarInactiveTintColor: '#BCAAA4', // Màu xám nâu khi không chọn
-        headerShown: false, // Ẩn cái header chữ to xấu xí mặc định ở trên cùng
-        tabBarStyle: {
-          backgroundColor: '#FFF',
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          height: 65,
-          paddingBottom: 10,
-          paddingTop: 5,
-        },
-      }}
-    >
-      {/* 1. ẨN MÀN HÌNH LOGIN */}
+    <Tabs screenOptions={{ headerShown: false }}>
+      
+      {/* 1. MÀN HÌNH ĐĂNG NHẬP: Ẩn hoàn toàn thanh Tab ở dưới */}
       <Tabs.Screen
-        name="index"
+        name="index" 
         options={{
-          href: null, // "Phép thuật" nằm ở đây: Vẫn chuyển trang được nhưng KHÔNG hiện nút
+          title: 'Login',
+          tabBarStyle: { display: 'none' }, // Dòng này làm phép tàng hình thanh Tab!
+          tabBarButton: () => null, // Ẩn luôn cái icon của nó
         }}
       />
 
-      {/* 2. ẨN MÀN HÌNH REGISTER */}
+      {/* 2. MÀN HÌNH HOME (Màn hình chính của App) */}
+      <Tabs.Screen
+        name="home" // Tên file màn hình chính của bạn (ví dụ home.tsx)
+        options={{
+          title: 'Home',
+          tabBarStyle: { display: 'none' },
+        }}
+      />
+    	{/* 2. ẨN MÀN HÌNH REGISTER */}
       <Tabs.Screen
         name="register"
         options={{
           href: null, 
         }}
       />
-
-      {/* 3. HIỂN THỊ MÀN HÌNH HOME */}
+      {/* 3. ẨN LUÔN MÀN HÌNH EXPLORE (Nếu bạn không dùng đến) */}
       <Tabs.Screen
-        name="home"
+        name="explore"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
+          href: null, // Xóa nút Explore khỏi thanh Tab
         }}
       />
 
-      {/* 4. HIỂN THỊ MÀN HÌNH EXPLORE (Bạn có thể đổi tên thành Notifications/Settings sau này) */}
-      <Tabs.Screen
-        name="explore" // Nếu bạn có file explore.tsx thì giữ lại, không thì bạn có thể đổi tên
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <Ionicons name="compass" size={24} color={color} />,
-        }}
-      />
     </Tabs>
   );
 }

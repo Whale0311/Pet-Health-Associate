@@ -5,11 +5,12 @@ import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Image, ImageBackground, InteractionManager, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { BleManager } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import io from 'socket.io-client';
+
 const bleManager = new BleManager();
 
 const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
@@ -80,6 +81,68 @@ export default function PetDashboardScreen() {
     if (months > 0) return `${months} tháng tuổi`;
     return 'Dưới 1 tháng tuổi';
   };
+  // --- BỘ NHỚ TẠM ĐỂ CHỨA DỮ LIỆU MỚI NHẤT ---
+  const latestData = useRef({ heartRate: 0, temperature: 0, behaviorCode: 0 });
+
+  // Mỗi khi BLE nhận số mới, cập nhật ngay vào bộ nhớ tạm
+  useEffect(() => {
+    latestData.current = {
+      heartRate: typeof heartRate === 'number' ? heartRate : 0,
+      temperature: parseFloat(temperature) || 0,
+      behaviorCode: behaviorCode
+    };
+  }, [heartRate, temperature, behaviorCode]);
+
+  // --- HỆ THỐNG ĐỒNG BỘ LÊN SERVER (Cứ 10s chạy 1 lần) ---
+  useEffect(() => {
+    const forwardDataToServer = async () => {
+      const { heartRate, temperature, behaviorCode } = latestData.current;
+      
+      // 1. IN RA ĐỂ XEM APP CÓ ĐANG CỐ GẮNG CHẠY HÀM NÀY KHÔNG
+      console.log(`[DEBUG 10s] Đang kiểm tra dữ liệu - Nhịp tim: ${heartRate}, Nhiệt độ: ${temperature}`);
+
+      // Chỉ gửi khi đã có dữ liệu thực (lớn hơn 0)
+      if (heartRate > 0 && temperature > 0) {
+        try {
+          const token = await AsyncStorage.getItem('userToken');
+          if (!token) {
+            console.log("❌ [LỖI APP] Không tìm thấy thẻ căn cước (Token) để gửi lên Server!");
+            return;
+          }
+
+          // Thay bằng link Render thật của bạn nếu tên nó khác
+          const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/health-logs'; 
+          
+          const payload = {
+            pet_id: petId,
+            behavior_code: behaviorCode,
+            heart_rate: heartRate,
+            temp_celsius: temperature,
+            humidity: 60
+          };
+
+          console.log("🚀 [ĐANG GỬI] Đang bắn dữ liệu lên Server:", payload);
+
+          const response = await axios.post(SERVER_URL, payload, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          console.log(`✅ [THÀNH CÔNG] Đã lưu vào Server:`, response.data);
+
+        } catch (error: any) {
+          // In ra chi tiết lỗi cụ thể từ Server báo về
+          console.log("❌ [LỖI SERVER TỪ CHỐI]:", error.response?.data || error.message);
+        }
+      } else {
+        console.log("⚠️ [BỎ QUA] Không gửi vì Nhiệt độ hoặc Nhịp tim đang bằng 0 hoặc bị lỗi định dạng (NaN).");
+      }
+    };
+
+    // Cài đặt đồng hồ: Cứ 10000ms (10 giây) thì gọi hàm forward 1 lần
+    const syncInterval = setInterval(forwardDataToServer, 10000);
+
+    return () => clearInterval(syncInterval);
+  }, [petId]);
   useEffect(() => {
     let socket: any;
 
@@ -96,8 +159,7 @@ export default function PetDashboardScreen() {
         const user = JSON.parse(userInfoString);
         const userId = user.user_id || user.id;
 
-        // 3. Kết nối tới Server Node.js (NHỚ ĐỔI ĐÚNG IP CỦA BẠN NẾU CẦN)
-        socket = io('http://192.168.1.72:3000'); 
+        socket = io('https://pet-collar-backend.onrender.com'); 
 
         // 4. Lắng nghe kênh cảnh báo riêng của User này
         socket.on(`new_alert_user_${userId}`, (alertData: any) => {
@@ -185,7 +247,7 @@ export default function PetDashboardScreen() {
     }
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const SERVER_URL = `http://192.168.1.72:3000/api/pets/${petId}`;
+      const SERVER_URL = `https://pet-collar-backend.onrender.com/api/pets/${petId}`;
 
       const payload = { 
         name: editName, 

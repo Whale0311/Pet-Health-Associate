@@ -94,7 +94,7 @@ export default function HomeScreen() {
         const user = JSON.parse(userInfoString);
         const userId = user.user_id || user.id;
         
-        socket = io('http://192.168.1.72:3000'); 
+        socket = io('https://pet-collar-backend.onrender.com'); 
         
         socket.on(`new_alert_user_${userId}`, (alertData: any) => {
           fetchNotifications(); // Cập nhật số đỏ trên chuông
@@ -121,7 +121,7 @@ export default function HomeScreen() {
     try {
       const token = await AsyncStorage.getItem('userToken');
       if (!token) return;
-      const response = await axios.get('http://192.168.1.72:3000/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.get('https://pet-collar-backend.onrender.com/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
       if (response.data.status === 'success') {
         const notifs = response.data.data;
         setNotifications(notifs);
@@ -136,7 +136,7 @@ export default function HomeScreen() {
     if (unreadCount > 0) {
       try {
         const token = await AsyncStorage.getItem('userToken');
-        await axios.put('http://192.168.1.72:3000/api/notifications/read-all', {}, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.put('https://pet-collar-backend.onrender.com/api/notifications/read-all', {}, { headers: { Authorization: `Bearer ${token}` } });
         setUnreadCount(0);
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       } catch (error) { console.log('Lỗi cập nhật đã đọc'); }
@@ -161,7 +161,7 @@ export default function HomeScreen() {
       }
 
       if (token) {
-        const SERVER_URL = 'http://192.168.1.72:3000/api/pets'; 
+        const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/pets'; 
         const response = await axios.get(SERVER_URL, { headers: { Authorization: `Bearer ${token}` } });
         if (response.data.status === 'success') {
           setPets(response.data.data);
@@ -212,7 +212,7 @@ export default function HomeScreen() {
       setLoading(true);
       const token = await AsyncStorage.getItem('userToken');
       const idsArray = Array.from(selectedPetIds);
-      const SERVER_URL_BASE = 'http://192.168.1.72:3000/api/pets'; 
+      const SERVER_URL_BASE = 'https://pet-collar-backend.onrender.com/api/pets'; 
       const deletePromises = idsArray.map(petId => axios.delete(`${SERVER_URL_BASE}/${petId}`, { headers: { Authorization: `Bearer ${token}` } }));
       await Promise.all(deletePromises);
       Alert.alert("Thành công", `Đã xóa ${idsArray.length} thú cưng khỏi hệ thống.`);
@@ -256,7 +256,7 @@ export default function HomeScreen() {
     if (!newPetName || !newPetMac) { Alert.alert("Thiếu thông tin", "Nhập tên và quét MAC!"); return; }
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const SERVER_URL = 'http://192.168.1.72:3000/api/pets'; 
+      const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/pets'; 
       const payload = { name: newPetName, gender: newPetGender || null, dob: newPetDob ? newPetDob.toISOString().split('T')[0] : null, weight: newPetWeight ? parseFloat(newPetWeight) : null, mac_address: newPetMac, image_url: newPetImageBase64 || null };
       
       const response = await axios.post(SERVER_URL, payload, { headers: { Authorization: `Bearer ${token}` } });
@@ -293,7 +293,7 @@ const handleChangePassword = async () => {
       const token = await AsyncStorage.getItem('userToken');
       
       // Chú ý: Đổi IP này thành đường link Render.com nếu bạn đang test bằng server Cloud
-      const SERVER_URL = 'http://192.168.1.72:3000/api/auth/change-password'; 
+      const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/auth/change-password'; 
 
       // 4. Gửi yêu cầu đổi mật khẩu xuống Server Node.js
       const response = await axios.put(SERVER_URL, {
