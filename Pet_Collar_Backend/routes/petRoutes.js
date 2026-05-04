@@ -84,13 +84,13 @@ router.post('/join', authenticateToken, async (req, res) => {
         }
 
         // 1. Tìm thú cưng dựa trên MAC
-        const petResult = await pool.query('SELECT id FROM pets WHERE mac_address = $1', [mac_address]);
+        const petResult = await pool.query('SELECT pet_id FROM pets WHERE mac_address = $1', [mac_address]);
         
         if (petResult.rows.length === 0) {
             return res.status(404).json({ status: "error", message: "Không tìm thấy thú cưng với địa chỉ MAC này!" });
         }
 
-        const petId = petResult.rows[0].id;
+        const petId = petResult.rows[0].pet_id;
 
         // 2. Kiểm tra xem người này đã theo dõi bé này chưa để tránh trùng lặp
         const checkExist = await pool.query('SELECT * FROM user_pets WHERE user_id = $1 AND pet_id = $2', [userId, petId]);
