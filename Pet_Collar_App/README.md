@@ -1,50 +1,148 @@
-# Welcome to your Expo app 👋
+# Pet Collar App 🐕
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Ứng dụng mobile theo dõi sức khỏe thú cưng theo thời gian thực thông qua kết nối Bluetooth với thiết bị Smart Collar.
 
-## Get started
+## 📱 Yêu cầu
 
-1. Install dependencies
+- Node.js v14+
+- npm v6+
+- Android Studio / Xcode (để build)
+- Expo CLI: `npm install -g expo-cli`
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## 🚀 Cài đặt & Chạy
 
 ```bash
-npm run reset-project
+# Cài đặt dependencies
+npm install
+
+# Chạy development server
+npm start
+
+# Build Android
+npm run android
+
+# Build iOS
+npm run ios
+
+# Build Web
+npm run web
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Sau khi chạy `npm start`, bạn có thể:
+- Quét QR code bằng **Expo Go** app
+- Chọn emulator (Android/iOS)
+- Chạy trên web browser
 
-## Learn more
+## 📂 Cấu trúc Folder
 
-To learn more about developing your project with Expo, look at the following resources:
+```
+Pet_Collar_App/
+├── app/                    # Routing & Pages (file-based)
+│   ├── (tabs)/            # Tab navigation screens
+│   ├── pet/               # Pet detail screens
+│   └── modal.tsx          # Modal components
+├── components/            # Reusable UI components
+├── hooks/                 # Custom React hooks
+├── constants/             # App constants & config
+├── assets/               # Images & fonts
+└── app.json              # Expo configuration
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## ✨ Tính năng chính
 
-## Join the community
+- 🔐 **Xác thực**: Đăng ký/Đăng nhập qua backend
+- 🐕 **Quản lý thú cưng**: Thêm, xem danh sách pets
+- 💓 **Theo dõi sức khỏe**: Nhịp tim, nhiệt độ, độ ẩm real-time
+- 📊 **Biểu đồ**: Visualize dữ liệu sức khỏe
+- 🔔 **Thông báo**: Cảnh báo khi phát hiện bất thường
+- 📍 **Vị trí**: Xem vị trí thú cưng (nếu có GPS)
+- 🔗 **Bluetooth**: Kết nối trực tiếp với Smart Collar
+- 🌐 **Real-time**: Socket.IO updates
 
-Join our community of developers creating universal apps.
+## 🛠 Công nghệ
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+| Công nghệ | Mục đích |
+|-----------|---------|
+| React Native | Mobile framework |
+| Expo | Cross-platform development |
+| TypeScript | Type safety |
+| Expo Router | File-based routing |
+| React Navigation | Navigation |
+| React Native BLE PLX | Bluetooth communication |
+| Socket.IO | Real-time updates |
+| Axios | HTTP client |
+| Chart Kit | Data visualization |
+
+## 🔑 Biến môi trường
+
+Tạo file `.env` tại root:
+
+```env
+EXPO_PUBLIC_API_URL=http://localhost:3000
+EXPO_PUBLIC_SOCKET_URL=http://localhost:3000
+```
+
+## 📋 Key Dependencies
+
+- **@react-navigation/native** - Navigation library
+- **react-native-ble-plx** - Bluetooth Low Energy
+- **socket.io-client** - Real-time communication
+- **react-native-chart-kit** - Charts & graphs
+- **expo-location** - GPS location
+- **expo-notifications** - Push notifications
+- **@react-native-async-storage/async-storage** - Local storage
+
+## 🔧 Linting
+
+```bash
+npm run lint
+```
+
+## 📚 File-based Routing
+
+App sử dụng [Expo Router](https://docs.expo.dev/router/introduction/) với file-based routing:
+
+- `app/(tabs)/` - Main tabs (home, pets, notifications, profile)
+- `app/pet/[id]/` - Dynamic pet detail page
+- `app/modal.tsx` - Modal screens
+
+## 🐛 Troubleshooting
+
+**Lỗi: "Unable to resolve dependency"**
+```bash
+npm install
+expo doctor
+```
+
+**Lỗi: Bluetooth không kết nối**
+- Kiểm tra permissions trong `app.json`
+- Bật Bluetooth trên thiết bị
+- Reset Bluetooth module
+
+**Lỗi: API connection failed**
+- Kiểm tra backend đang chạy (port 3000)
+- Kiểm tra `.env` configuration
+- Kiểm tra network connectivity
+
+## 📖 Tài liệu
+
+- [Expo Docs](https://docs.expo.dev/)
+- [React Native Docs](https://reactnative.dev/)
+- [Expo Router Docs](https://docs.expo.dev/router/introduction/)
+- [Socket.IO Client](https://socket.io/docs/v4/client-api/)
+
+## 🎯 Scripts
+
+| Script | Mục đích |
+|--------|---------|
+| `npm start` | Run development server |
+| `npm run android` | Build Android app |
+| `npm run ios` | Build iOS app |
+| `npm run web` | Run on web browser |
+| `npm run lint` | Check code quality |
+| `npm run reset-project` | Reset to fresh state |
+
+---
+
+**Version**: 1.0.0  
+**Built with**: Expo & React Native

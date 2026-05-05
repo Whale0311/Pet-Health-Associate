@@ -200,7 +200,7 @@ export default function PetDashboardScreen() {
           // Cập nhật biểu đồ (thêm điểm mới vào mảng, giữ tối đa 10 điểm)
           setHistoryLogs((prev) => {
             const updated = [newData, ...prev];
-            return updated.slice(0, 10); 
+            return updated.slice(0, 6); 
           });
         });
       }

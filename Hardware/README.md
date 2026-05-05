@@ -1,69 +1,307 @@
-Pet Collar IoT - Phân hệ Phần cứng (Hardware)
-Đây là phân hệ thiết bị nhúng (Embedded System) của dự án Vòng cổ theo dõi sức khỏe thú cưng. Phân hệ này chịu trách nhiệm thu thập dữ liệu sinh hiệu, phân tích hành vi bằng Trí tuệ nhân tạo (Edge AI) và truyền dữ liệu theo thời gian thực tới Ứng dụng di động thông qua chuẩn giao tiếp Bluetooth Low Energy (BLE).
+# Pet Smart Collar - Hardware 🐕
 
-🌟 Tính năng cốt lõi
-Đo lường Sinh hiệu: Đọc dữ liệu nhịp tim (Heart Rate) và nhiệt độ cơ thể (Body Temperature) liên tục.
+Phân hệ phần cứng của hệ thống theo dõi sức khỏe thú cưng. Sử dụng ESP32 để thu thập dữ liệu sinh hiệu, phân tích hành vi bằng Edge AI, và gửi dữ liệu real-time qua Bluetooth Low Energy (BLE).
 
-Phân tích Hành vi (Edge AI): Sử dụng mô hình Machine Learning được huấn luyện trên Edge Impulse để phân loại 4 trạng thái hành vi: Idle (Nghỉ ngơi), Playing (Đang chơi), Trotting (Chạy kiệu), Walking (Đang đi).
+## 📋 Mục lục
 
-Giao tiếp BLE Tiết kiệm Năng lượng: Thiết lập làm BLE Server, phát sóng dữ liệu liên tục để điện thoại thu thập mà không cần duy trì kết nối WiFi, giúp tối ưu hóa thời lượng pin cho vòng cổ.
+- [Tính năng](#tính-năng)
+- [Phần cứng cần thiết](#phần-cứng-cần-thiết)
+- [Cài đặt](#cài-đặt)
+- [Wiring Diagram](#wiring-diagram)
+- [BLE Configuration](#ble-configuration)
+- [Upload Code](#upload-code)
+- [Troubleshooting](#troubleshooting)
 
-Định danh Thông minh: Quá trình quét và thêm thiết bị mới vào ứng dụng được thực hiện thông qua việc nhận diện trực tiếp Tên/ID duy nhất (Unique Name/ID) của mạch ESP32, mang lại trải nghiệm kết nối liền mạch mà không cần nút bấm vật lý trên vòng cổ.
+---
 
-🛠️ Yêu cầu Phần cứng & Linh kiện
-Vi điều khiển: ESP32 (Tích hợp sẵn Bluetooth/BLE).
+## ✨ Tính năng
 
-Cảm biến chuyển động: MPU6050 (Gia tốc kế & Con quay hồi chuyển) để lấy dữ liệu raw cho mô hình AI.
+- 📊 **Đo lường sinh hiệu**: Nhịp tim, nhiệt độ, độ ẩm real-time
+- 🤖 **Edge AI**: Phân loại 4 trạng thái hành vi (Idle, Playing, Trotting, Walking)
+- 🔋 **BLE tiết kiệm năng lượng**: Hoạt động lâu dài với pin Li-po
+- 📱 **Kết nối không dây**: BLE Server tương thích iOS/Android
+- 🔄 **Real-time**: Gửi dữ liệu liên tục qua BLE notify
+- ⚡ **Multi-core**: Sử dụng FreeRTOS để xử lý song song
 
-Cảm biến sinh hiệu: (Các module cảm biến Nhịp tim & Nhiệt độ tương thích như MAX30102 hoặc tương đương).
+---
 
-Nguồn cấp: Pin Li-po và mạch sạc/bảo vệ pin.
+## 🛠 Phần cứng cần thiết
 
-📂 Cấu trúc Thư mục
-Plaintext
-Hardware/
-├── Hardware.ino          # File mã nguồn chính của mạch ESP32
-├── TestMPU/              # Mã nguồn test cảm biến gia tốc (Calibration)
-├── Test_AI_MPU/          # Mã nguồn test suy luận mô hình AI nội bộ
-└── README.md             # Tài liệu bạn đang đọc
-📡 Cấu hình Giao thức BLE (Bluetooth Low Energy)
-Mạch ESP32 phát sóng một Service chứa 3 Characteristics độc lập để phân loại luồng dữ liệu. Dữ liệu được mã hóa trước khi truyền đi.
+| Linh kiện | Mô tả | Ghi chú |
+|-----------|--------|--------|
+| **ESP32** | Vi điều khiển chính (có BLE tích hợp) | DevKit v1 |
+| **MPU6050** | Gia tốc kế + Con quay hồi chuyển | I2C interface |
+| **MAX30105** | Cảm biến nhịp tim (PPG) | I2C interface |
+| **SHT31** | Cảm biến nhiệt độ & độ ẩm | I2C interface |
+| **Pin Li-po** | Nguồn cấp điện | 3.7V-4.2V |
+| **Mạch sạc TP4056** | Bảo vệ & sạc pin | Tùy chọn |
+| **Cáp USB Type-C** | Nạp code và cấp điện | Cho ESP32 |
 
-Service UUID: 19b10000-e8f2-537e-4f6c-d104768a1214
+---
 
-Characteristics:
+## 📦 Cài đặt
 
-19b10001-...: Mã hành vi (Behavior Code: 0, 1, 2, 3)
+### 1. Cài đặt Arduino IDE / PlatformIO
 
-19b10002-...: Nhịp tim (Heart Rate - bpm)
+**Arduino IDE:**
+```bash
+# Tải tại: https://www.arduino.cc/en/software
+# Hoặc: choco install arduino-ide (Windows)
+```
 
-19b10003-...: Nhiệt độ (Temperature - °C)
+**PlatformIO (VS Code):**
+```bash
+# Cài đặt extension PlatformIO IDE trên VS Code
+```
 
-🚀 Hướng dẫn Cài đặt & Nạp code
-1. Cài đặt Môi trường
-Cài đặt Arduino IDE (hoặc PlatformIO trên VS Code).
+### 2. Thêm hỗ trợ ESP32
 
-Thêm gói thư viện hỗ trợ board ESP32 vào Boards Manager.
+**Arduino IDE:**
+- Preferences → Additional Boards Manager URLs
+- Thêm: `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
+- Boards Manager → Tìm "esp32" → Cài đặt
 
-2. Cài đặt Thư viện
-Bạn cần cài đặt các thư viện sau thông qua Library Manager (hoặc file .zip tải về):
+**PlatformIO:**
+- Tự động nhận diện khi chọn board ESP32
 
-Thư viện giao tiếp I2C và cảm biến: Adafruit MPU6050, Adafruit Unified Sensor.
+### 3. Cài đặt Thư viện
 
-Thư viện BLE: BLEDevice, BLEServer, BLEUtils, BLE2902.
+Tất cả thư viện có thể cài từ **Library Manager** (Arduino IDE):
 
-Thư viện Edge AI (Quan trọng): Tải file nén ei-pet_behavior_tracker-arduino-1.0.1.zip (xuất từ Edge Impulse Studio). Trong Arduino IDE, chọn Sketch -> Include Library -> Add .ZIP Library... và trỏ tới file nén này.
+```
+Adafruit MPU6050
+Adafruit SHT31
+MAX30105 Library
+DFRobot Heart Rate
+BLEDevice (Arduino-esp32 built-in)
+Pet_Behavior_Tracker (từ Edge Impulse)
+```
 
-3. Biên dịch và Nạp (Flash)
-Kết nối mạch ESP32 với máy tính qua cáp USB Type-C/Micro-USB.
+**Cài đặt Edge AI Model:**
+- Tải file `.zip` từ Edge Impulse Studio
+- Arduino IDE: Sketch → Include Library → Add .ZIP Library
+- Chọn file zip đã tải
 
-Mở file Hardware.ino.
+---
 
-Chọn đúng cổng COM và Board ESP32 Dev Module.
+## 🔌 Wiring Diagram
 
-Bấm nút Upload. Nếu mạch có nút BOOT, hãy nhấn giữ nút BOOT trên mạch khi màn hình hiện chữ Connecting... để bắt đầu nạp.
+### I2C Pins (Cảm biến)
 
-⚠️ Lưu ý khi phát triển
-Tần số lấy mẫu (Sampling Rate) của MPU6050 trong code ESP32 phải khớp tuyệt đối với tần số đã sử dụng khi huấn luyện mô hình trên Edge Impulse để AI nhận diện chính xác.
+```
+ESP32        | MPU6050 | MAX30105 | SHT31
+-------------|---------|----------|-------
+GPIO 21 (SDA)| SDA     | SDA      | SDA
+GPIO 22 (SCL)| SCL     | SCL      | SCL
+3.3V         | VCC     | VCC      | VCC
+GND          | GND     | GND      | GND
+```
 
-Tránh sử dụng hàm delay() trong vòng lặp chính loop(). Hãy sử dụng cơ chế millis() để không làm gián đoạn quá trình gửi dữ liệu BLE và suy luận AI.
+### BLE
+
+- Built-in trên ESP32 (không cần wiring thêm)
+
+### Power
+
+```
+Li-po Battery (3.7V) → ESP32 5V (qua regulator) & BAT pin
+USB Type-C → Cho phép cấp điện & upload code
+```
+
+> 📌 **Lưu ý**: I2C addresses mặc định là 0x68 (MPU6050), 0x44 (SHT31), 0x57 (MAX30105)
+
+---
+
+## 📡 BLE Configuration
+
+### Service & Characteristics
+
+```
+Service UUID: 19B10000-E8F2-537E-4F6C-D104768A1214
+
+├─ Behavior Code (19B10001-...)
+│  ├─ 0 = Nằm (Idle/Lying)
+│  ├─ 1 = Chơi (Playing)
+│  ├─ 2 = Chạy kiệu (Trotting)
+│  └─ 3 = Đi bộ (Walking)
+│
+├─ Heart Rate (19B10002-...)
+│  └─ bpm (0-255)
+│
+├─ Temperature (19B10003-...)
+│  └─ °C (decimal)
+│
+└─ Humidity (19B10004-...)
+   └─ % (0-100)
+```
+
+**Device Name**: `Pet_Collar_XXXXXX` (XXXXXX = MAC address)
+
+---
+
+## 🚀 Upload Code
+
+### Bước 1: Kết nối
+1. Cắm ESP32 vào máy tính qua USB Type-C
+2. Chọn Tools → Port → COM port của ESP32
+3. Chọn Tools → Board → ESP32 Dev Module
+
+### Bước 2: Biên dịch & Upload
+```bash
+# Arduino IDE
+# Bấm Upload (mũi tên →)
+
+# PlatformIO
+# Bấn Upload trên status bar
+```
+
+### Bước 3: Monitor Serial
+```bash
+# Xem output từ board
+Arduino IDE: Tools → Serial Monitor (Baud: 115200)
+PlatformIO: Bấn Monitor trên status bar
+```
+
+**Output mong đợi:**
+```
+✅ MPU6050 initialized!
+✅ MAX30105 initialized!
+✅ SHT31 initialized!
+✅ Edge AI Model loaded!
+🚀 BLE Server started. Name: Pet_Collar_XXXXXX
+...
+```
+
+---
+
+## 📂 Cấu trúc Code
+
+| File | Mục đích |
+|------|---------|
+| `Hardware.ino` | Code chính - BLE server, cảm biến, AI inference |
+| `TestMPU/` | Test & calibrate MPU6050 (accelerometer) |
+| `Test_AI_MPU/` | Test mô hình AI với dữ liệu MPU6050 |
+
+---
+
+## ⚠️ Lưu ý quan trọng
+
+1. **Tần số lấy mẫu (Sampling Rate)**
+   - Phải khớp với tần số huấn luyện trên Edge Impulse
+   - Mặc định: 100 Hz
+
+2. **Tránh delay()**
+   - Dùng `millis()` thay vì `delay()` trong loop chính
+   - `delay()` sẽ gián đoạn BLE notifications
+
+3. **I2C Address Conflicts**
+   - Nếu có nhiều thiết bị I2C, kiểm tra địa chỉ
+   - Dùng I2C Scanner để quét
+
+4. **Power Management**
+   - Sạc pin trước khi sử dụng
+   - Monitor nguồn cấp nếu có lỗi
+   - Có thể bật Deep Sleep để tiết kiệm
+
+---
+
+## 🔧 Troubleshooting
+
+### ❌ Board không được nhận diện
+```
+Giải pháp:
+1. Cài đặt driver CH340/FTDI
+2. Thử cáp USB khác
+3. Chọn đúng Board: ESP32 Dev Module
+```
+
+### ❌ Lỗi "Timed out waiting for packet header"
+```
+Giải pháp:
+1. Nhấn nút BOOT trên board khi upload
+2. Kiểm tra baud rate (115200)
+3. Thử reset board: Press EN button
+```
+
+### ❌ Cảm biến không được khởi tạo
+```
+Giải pháp:
+1. Kiểm tra wiring I2C (SDA/SCL)
+2. Chạy I2C Scanner để tìm address
+3. Kiểm tra điện áp 3.3V trên cảm biến
+```
+
+### ❌ BLE không kết nối được
+```
+Giải pháp:
+1. Kiểm tra BLE được bật trên điện thoại
+2. Khởi động lại board
+3. Đảm bảo firmware ESP32 updated
+```
+
+### ❌ AI Model error
+```
+Giải pháp:
+1. Kiểm tra file .zip Edge Impulse được thêm
+2. Include header đúng: #include <...._inferencing.h>
+3. Kiểm tra tần số lấy mẫu khớp với training
+```
+
+---
+
+## 📊 Kiểm tra Hiệu suất
+
+### Serial Monitor Output
+```bash
+# Khi kết nối BLE:
+📱 App Android đã kết nối!
+
+# Khi nhận dữ liệu:
+Behavior: 0 | HR: 85 bpm | Temp: 38.5°C | Humidity: 65%
+Behavior: 1 | HR: 95 bpm | Temp: 38.6°C | Humidity: 66%
+
+# Khi ngắt kết nối:
+📵 App Android đã ngắt kết nối!
+```
+
+### BLE Scanning (Phone)
+- Dùng BLE Scanner app
+- Tìm device "Pet_Collar_XXXXXX"
+- Connect và read characteristics
+
+---
+
+## 🔌 Pin Configuration
+
+```
+ESP32 Pin | Function
+----------|----------
+GPIO 21   | I2C SDA
+GPIO 22   | I2C SCL
+GPIO 5V   | Power supply (cảm biến)
+GPIO GND  | Ground
+```
+
+---
+
+## 📚 Tài liệu tham khảo
+
+- [ESP32 Official Docs](https://docs.espressif.com/projects/esp32-rtos-sdk/en/latest/)
+- [Arduino-esp32 GitHub](https://github.com/espressif/arduino-esp32)
+- [Edge Impulse Docs](https://docs.edgeimpulse.com/)
+- [BLE for Arduino](https://github.com/espressif/arduino-esp32/tree/master/libraries/BLE)
+
+---
+
+## 🎯 Next Steps
+
+- [ ] Calibrate MPU6050 sensors
+- [ ] Verify AI model inference accuracy
+- [ ] Test BLE range & stability
+- [ ] Optimize battery consumption
+- [ ] Package into collar form factor
+
+---
+
+**Version**: 1.0.0  
+**Last Updated**: May 2024

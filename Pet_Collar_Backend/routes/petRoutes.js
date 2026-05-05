@@ -13,7 +13,7 @@ router.post('/', authenticateToken, async (req, res) => {
         const checkMac = await pool.query('SELECT pet_id FROM pets WHERE mac_address = $1', [mac_address]);
         if (checkMac.rows.length > 0) return res.status(400).json({ status: "error", message: "MAC đã được kết nối!" });
 
-        const defaultImage = "https://cdn-icons-png.flaticon.com/512/8204/8204652.png";
+        const defaultImage = "https://img.icons8.com/fluency/96/dog.png";
         
         await pool.query('BEGIN'); 
         const insertPetQuery = `INSERT INTO pets (name, gender, dob, weight, mac_address, image_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;`;
