@@ -293,15 +293,4 @@ GPIO GND  | Ground
 
 ---
 
-## 🎯 Next Steps
-
-- [ ] Calibrate MPU6050 sensors
-- [ ] Verify AI model inference accuracy
-- [ ] Test BLE range & stability
-- [ ] Optimize battery consumption
-- [ ] Package into collar form factor
-
----
-
 **Version**: 1.0.0  
-**Last Updated**: May 2024

@@ -352,16 +352,6 @@ Chi tiết xem [Backend README](Pet_Collar_Backend/README.md#cơ-sở-dữ-liệ
 
 ISC License - Xem `LICENSE` file
 
----
-
-## 👥 Contributors
-
-- **Backend Team** - API development
-- **Frontend Team** - Mobile app
-- **Hardware Team** - Embedded systems
-- **ML Team** - Model training & optimization
-
----
 
 ## 🔗 Links
 
@@ -371,29 +361,6 @@ ISC License - Xem `LICENSE` file
 - 📖 [Edge Impulse](https://www.edgeimpulse.com/)
 - 📱 [PostgreSQL Docs](https://www.postgresql.org/docs/)
 
----
-
-## 🎯 Roadmap
-
-### Phase 1 (Current)
-- ✅ User authentication
-- ✅ Health data collection
-- ✅ Basic alerts
-- ✅ Real-time updates
-
-### Phase 2
-- 📅 Advanced analytics
-- 📅 Vet integration
-- 📅 Community features
-- 📅 Wearable device support
-
-### Phase 3
-- 🚀 Machine learning improvements
-- 🚀 Multi-language support
-- 🚀 Offline mode
-- 🚀 Cloud synchronization
-
----
 
 ## 💬 Support & Contact
 
@@ -403,9 +370,5 @@ ISC License - Xem `LICENSE` file
 - Contact: [Support Email]
 
 ---
-
-**Project Start Date**: 2026  
-**Latest Update**: May 2026  
-**Version**: 1.0.0
 
 🐾 **Happy Pet Monitoring!** 🐾

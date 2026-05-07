@@ -984,4 +984,3 @@ ISC License - Xem file LICENSE để biết chi tiết
 ---
 
 **Phiên bản**: 1.0.0  
-**Cập nhật lần cuối**: Tháng 1, 2024
