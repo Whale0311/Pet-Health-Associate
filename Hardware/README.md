@@ -101,11 +101,6 @@ GND          | GND     | GND      | GND
 
 - Built-in trên ESP32 (không cần wiring thêm)
 
-### Power
-
-```
-Li-po Battery (3.7V) → ESP32 5V (qua regulator) & BAT pin
-USB Type-C → Cho phép cấp điện & upload code
 ```
 
 > 📌 **Lưu ý**: I2C addresses mặc định là 0x68 (MPU6050), 0x44 (SHT31), 0x57 (MAX30105)
@@ -198,10 +193,6 @@ PlatformIO: Bấn Monitor trên status bar
    - Nếu có nhiều thiết bị I2C, kiểm tra địa chỉ
    - Dùng I2C Scanner để quét
 
-4. **Power Management**
-   - Sạc pin trước khi sử dụng
-   - Monitor nguồn cấp nếu có lỗi
-   - Có thể bật Deep Sleep để tiết kiệm
 
 ---
 

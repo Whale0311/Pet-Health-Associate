@@ -1,0 +1,66 @@
+{
+    "feature": "temp_celsius",
+    "threshold": 39.54999923706055,
+    "left": {
+        "feature": "temp_celsius",
+        "threshold": 35.95000076293945,
+        "left": {
+            "value": 2
+        },
+        "right": {
+            "feature": "temp_celsius",
+            "threshold": 38.54999923706055,
+            "left": {
+                "feature": "heart_rate",
+                "threshold": 180.5,
+                "left": {
+                    "feature": "heart_rate",
+                    "threshold": 59.5,
+                    "left": {
+                        "value": 2
+                    },
+                    "right": {
+                        "value": 0
+                    }
+                },
+                "right": {
+                    "feature": "behavior_code",
+                    "threshold": 2.5,
+                    "left": {
+                        "value": 1
+                    },
+                    "right": {
+                        "value": 0
+                    }
+                }
+            },
+            "right": {
+                "feature": "behavior_code",
+                "threshold": 0.5,
+                "left": {
+                    "feature": "heart_rate",
+                    "threshold": 140.5,
+                    "left": {
+                        "value": 1
+                    },
+                    "right": {
+                        "value": 2
+                    }
+                },
+                "right": {
+                    "feature": "heart_rate",
+                    "threshold": 59.5,
+                    "left": {
+                        "value": 2
+                    },
+                    "right": {
+                        "value": 1
+                    }
+                }
+            }
+        }
+    },
+    "right": {
+        "value": 2
+    }
+}
