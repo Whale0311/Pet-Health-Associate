@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useRouter, useRootNavigationState } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 export default function LoginScreen() {
@@ -10,8 +10,26 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const rootNavigationState = useRootNavigationState();
 
-  // Hàm xử lý đăng nhập (Sẽ ghép API sau)
+  useEffect(() => {
+    // Chỉ kiểm tra khi cây điều hướng (Router Tree) đã sẵn sàng
+    if (!rootNavigationState?.key) return;
+
+    const checkLoginStatus = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        if (token) {
+          // Nếu có token (đã đăng nhập), đuổi thẳng vào trang home
+          router.replace('/(tabs)/home');
+        }
+      } catch (error) {
+        console.log('Lỗi kiểm tra token:', error);
+      }
+    };
+
+    checkLoginStatus();
+  }, [rootNavigationState?.key]);
   // Hàm xử lý đăng nhập gọi API
   const handleLogin = async () => {
     // 1. Kiểm tra không được để trống

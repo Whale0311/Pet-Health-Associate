@@ -59,7 +59,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.user_id; // Lấy ID của người đang bấm nút xóa
         const petId = req.params.id;
-
+        await pool.query('DELETE FROM notifications WHERE user_id = $1 AND pet_id = $2', [userId, petId]);
         // 1. Chỉ cắt đứt liên kết giữa người này và thú cưng
         await pool.query('DELETE FROM user_pets WHERE user_id = $1 AND pet_id = $2', [userId, petId]);
 

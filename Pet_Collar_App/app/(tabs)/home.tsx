@@ -3,11 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, PermissionsAndroid, Platform } from 'react-native';
 import { BleManager, Device } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import io from 'socket.io-client';
@@ -32,6 +31,15 @@ interface AppNotification {
   is_read: boolean;
   created_at: string;
 }
+interface DeviceStatus {
+  status: 'Disconnected' | 'Connecting' | 'Connected';
+  heartRate: number | string;
+  temperature: number | string;
+}
+const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
+const BEHAVIOR_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
+const HEARTRATE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
+const TEMPERATURE_CHAR_UUID = "19b10003-e8f2-537e-4f6c-d104768a1214";
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: true,
@@ -47,6 +55,9 @@ export default function HomeScreen() {
   const [userName, setUserName] = useState('User');
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(true);
+  // Global Real-time States for Multiple Devices
+  const [devicesState, setDevicesState] = useState<Record<number, DeviceStatus>>({});
+  const activeConnections = useRef<Record<number, Device>>({});
 
   // --- STATE THÔNG BÁO ---
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -83,39 +94,113 @@ export default function HomeScreen() {
     }, [])
   );
 
+  // 1. Hệ thống Nghe Thông báo Khẩn cấp Toàn cục (Global Socket)
   useEffect(() => {
     let socket: any;
-    const setupSocket = async () => {
-      // Nhắc App xin quyền thông báo nếu lỡ chưa cấp
+    const setupGlobalRealtimeEngine = async () => {
       await Notifications.requestPermissionsAsync();
-
       const userInfoString = await AsyncStorage.getItem('userInfo');
       if (userInfoString) {
         const user = JSON.parse(userInfoString);
         const userId = user.user_id || user.id;
-        
         socket = io('https://pet-collar-backend.onrender.com'); 
-        
         socket.on(`new_alert_user_${userId}`, (alertData: any) => {
-          fetchNotifications(); // Cập nhật số đỏ trên chuông
-
-          // Bắn thông báo "Ting" ngay trên màn hình Home
+          fetchNotifications();
           if (alertData && alertData.title) {
             Notifications.scheduleNotificationAsync({
-              content: {
-                title: alertData.title,
-                body: alertData.message,
-                sound: true,
-              },
+              content: { title: alertData.title, body: alertData.message, sound: true },
               trigger: null, 
             });
           }
         });
       }
     };
-    setupSocket();
+    setupGlobalRealtimeEngine();
     return () => { if (socket) socket.disconnect(); };
   }, []);
+
+  // 2. Hệ thống Theo dõi Thiết bị & Đa kết nối BLE
+  useEffect(() => {
+    if (pets.length === 0) return;
+    const devicesToConnect = pets.slice(0, 3); // Giới hạn tối đa 3 thiết bị
+
+    devicesToConnect.forEach((pet) => {
+      if (activeConnections.current[pet.pet_id] || devicesState[pet.pet_id]?.status === 'Connected') return;
+      connectDeviceInBackground(pet.pet_id, pet.mac_address);
+    });
+
+    const socket = io('https://pet-collar-backend.onrender.com');
+    devicesToConnect.forEach((pet) => {
+      socket.off(`new_health_data_${pet.pet_id}`);
+      socket.on(`new_health_data_${pet.pet_id}`, (newData: any) => {
+        setDevicesState(prev => {
+          if (prev[pet.pet_id]?.status === 'Connected') return prev; 
+          return {
+            ...prev,
+            [pet.pet_id]: { status: 'Disconnected', heartRate: newData.heart_rate, temperature: newData.temp_celsius }
+          };
+        });
+      });
+    });
+    return () => { socket.disconnect(); };
+  }, [pets]);
+
+  // 3. Hàm Xử lý Kết nối BLE Ngầm
+  const connectDeviceInBackground = async (petId: number, macAddress: string) => {
+    if (!macAddress) return;
+    setDevicesState(prev => ({ ...prev, [petId]: { status: 'Connecting', heartRate: '--', temperature: '--' } }));
+
+    try {
+      const device = await bleManager.connectToDevice(macAddress);
+      await device.discoverAllServicesAndCharacteristics();
+      activeConnections.current[petId] = device;
+
+      setDevicesState(prev => ({ ...prev, [petId]: { ...prev[petId], status: 'Connected' } }));
+
+      let localHR: number | string = '--';
+      let localTemp: string | number = '--';
+      let localBehavior = 0;
+
+      const dataSyncTimer = setInterval(async () => {
+        if (localHR !== '--' && localTemp !== '--') {
+          try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (token) {
+              await axios.post('https://pet-collar-backend.onrender.com/api/health-logs', {
+                pet_id: petId, behavior_code: localBehavior, heart_rate: Number(localHR), temp_celsius: Number(localTemp), humidity: 60
+              }, { headers: { Authorization: `Bearer ${token}` } });
+            }
+          } catch (err) {}
+        }
+      }, 10000);
+
+      device.monitorCharacteristicForService(SERVICE_UUID, HEARTRATE_CHAR_UUID, (err, char) => {
+        if (char?.value) {
+          localHR = atob(char.value).charCodeAt(0);
+          setDevicesState(prev => ({ ...prev, [petId]: { ...prev[petId], heartRate: localHR } }));
+        }
+      });
+
+      device.monitorCharacteristicForService(SERVICE_UUID, TEMPERATURE_CHAR_UUID, (err, char) => {
+        if (char?.value) {
+          localTemp = atob(char.value);
+          setDevicesState(prev => ({ ...prev, [petId]: { ...prev[petId], temperature: localTemp } }));
+        }
+      });
+
+      device.monitorCharacteristicForService(SERVICE_UUID, BEHAVIOR_CHAR_UUID, (err, char) => {
+        if (char?.value) localBehavior = atob(char.value).charCodeAt(0);
+      });
+
+      bleManager.onDeviceDisconnected(macAddress, () => {
+        clearInterval(dataSyncTimer);
+        delete activeConnections.current[petId];
+        setDevicesState(prev => ({ ...prev, [petId]: { status: 'Disconnected', heartRate: '--', temperature: '--' } }));
+      });
+    } catch (error) {
+      setDevicesState(prev => ({ ...prev, [petId]: { status: 'Disconnected', heartRate: '--', temperature: '--' } }));
+    }
+  };
 
   const fetchNotifications = async () => {
     try {
@@ -235,19 +320,58 @@ export default function HomeScreen() {
 
   const startScanBLE = async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { Alert.alert("Lỗi", "Cần cấp quyền Vị trí!"); return; }
-      setShowScanModal(true); setIsScanning(true); setScannedDevices([]);
+      // 1. Thuật toán xin quyền Bluetooth chuẩn cho mọi đời Android
+      let permissionGranted = false;
+      if (Platform.OS === 'android' && Platform.Version >= 31) {
+        // Dành cho Android 12+: Xin quyền "Thiết bị ở gần"
+        const result = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        ]);
+        permissionGranted = 
+          result['android.permission.BLUETOOTH_SCAN'] === PermissionsAndroid.RESULTS.GRANTED &&
+          result['android.permission.BLUETOOTH_CONNECT'] === PermissionsAndroid.RESULTS.GRANTED;
+      } else if (Platform.OS === 'android') {
+        // Dành cho Android 11 trở xuống: Vẫn cần quyền Vị trí
+        const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+        permissionGranted = result === PermissionsAndroid.RESULTS.GRANTED;
+      } else {
+        permissionGranted = true; // iOS
+      }
+
+      if (!permissionGranted) {
+        Alert.alert("Permission Denied", "Please allow 'Nearby Devices' permission to scan for collars.");
+        return;
+      }
+
+      // 2. Bắt đầu quét
+      setShowScanModal(true); 
+      setIsScanning(true); 
+      setScannedDevices([]);
+
       bleManager.startDeviceScan(null, null, (error, device) => {
-        if (error) { setIsScanning(false); return; }
+        if (error) { 
+          setIsScanning(false); 
+          return; 
+        }
+        
         if (device && (device.name && device.name.includes("Pet_Smart_Collar"))) {
           setScannedDevices((prev) => {
-            if (!prev.find((d) => d.id === device.id)) return [...prev, device]; return prev;
+            if (!prev.find((d) => d.id === device.id)) return [...prev, device]; 
+            return prev;
           });
         }
       });
-      setTimeout(() => { bleManager.stopDeviceScan(); setIsScanning(false); }, 10000);
-    } catch (err) { console.warn(err); }
+
+      // Tự động dừng quét sau 10 giây
+      setTimeout(() => { 
+        bleManager.stopDeviceScan(); 
+        setIsScanning(false); 
+      }, 10000);
+
+    } catch (err) { 
+      console.warn("Scan Error:", err); 
+    }
   };
   
   const handleSelectDevice = (device: Device) => { bleManager.stopDeviceScan(); setIsScanning(false); setShowScanModal(false); setNewPetMac(device.id); setShowAddPetModal(true); };
@@ -375,6 +499,8 @@ const handleChangePassword = async () => {
   const renderPetCard = ({ item, index }: { item: Pet; index: number }) => {
     const bgColor = CARD_COLORS[index % CARD_COLORS.length];
     const isSelected = selectedPetIds.has(item.pet_id);
+    const liveState = devicesState[item.pet_id] || { status: 'Disconnected', heartRate: '--', temperature: '--' };
+    const dotColor = liveState.status === 'Connected' ? '#4CAF50' : liveState.status === 'Connecting' ? '#FFC107' : 'rgba(255,255,255,0.4)';
 
     return (
       <TouchableOpacity 
@@ -390,9 +516,26 @@ const handleChangePassword = async () => {
         <View style={styles.petInfo}>
           <View style={styles.petHeaderRow}>
             <Text style={styles.petName} numberOfLines={1}>{item.name}</Text>
-            {isInSelectionMode ? <Ionicons name={isSelected ? "checkbox" : "square-outline"} size={26} color="#FDCB58" /> : <Ionicons name="paw" size={24} color="rgba(255, 255, 255, 0.4)" />}
+            {isInSelectionMode ? (
+              <Ionicons name={isSelected ? "checkbox" : "square-outline"} size={26} color="#FDCB58" />
+            ) : (
+              <View style={styles.cardStatusBadge}>
+                <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
+                <Text style={styles.statusLabelText}>{liveState.status}</Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.petDetail}>{item.gender === 'Male' ? 'Đực' : item.gender === 'Female' ? 'Cái' : 'Chưa rõ giới'} {item.weight ? ` • ${item.weight} kg` : ''}</Text>
+          
+          <Text style={styles.petDetail}>
+            {item.gender === 'Male' ? '♂ Male' : item.gender === 'Female' ? '♀ Female' : '🐾 Unknown'} 
+            {item.weight ? ` • ${item.weight} kg` : ''}
+          </Text>
+
+          <View style={styles.quickStatsGrid}>
+            <Text style={styles.quickStatText}>❤️ {liveState.heartRate} bpm</Text>
+            <Text style={styles.quickStatText}>🌡️ {liveState.temperature} °C</Text>
+          </View>
+          
           <View style={styles.macContainer}><Ionicons name="bluetooth" size={14} color="#FFF" style={styles.macIcon} /><Text style={styles.petMac}>MAC: {item.mac_address}</Text></View>
         </View>
       </TouchableOpacity>
@@ -600,6 +743,11 @@ const handleChangePassword = async () => {
 }
 
 const styles = StyleSheet.create({
+  cardStatusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 5 },
+  statusLabelText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
+  quickStatsGrid: { flexDirection: 'row', gap: 15, marginTop: 8, backgroundColor: 'rgba(255,255,255,0.15)', padding: 8, borderRadius: 12, width: '90%' },
+  quickStatText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 15, zIndex: 10 },
