@@ -11,20 +11,13 @@ const aiModel = JSON.parse(fs.readFileSync(modelPath, 'utf8'));
 
 /**
  * 🌳 HÀM SUY LUẬN AI (Duyệt cây quyết định - Đọc hiểu file JSON)
- * @param {Object} node - Nút hiện tại của cây
- * @param {Object} data - Dữ liệu đầu vào { heart_rate, temp_celsius, behavior_code }
- * @returns {Number} - Mức độ cảnh báo (0: Normal, 1: Warning, 2: Danger)
  */
 function predictAlertLevel(node, data) {
-    // Nếu chạm tới nút lá (Leaf Node), trả về kết quả dự đoán của AI
     if (node.value !== undefined) {
         return node.value;
     }
     
-    // Lấy chỉ số sức khỏe mà nút hiện tại đang muốn kiểm tra
     const currentFeatureValue = data[node.feature];
-    
-    // Duyệt sang nhánh trái hoặc nhánh phải dựa trên ngưỡng (threshold) của AI
     if (currentFeatureValue <= node.threshold) {
         return predictAlertLevel(node.left, data);
     } else {
@@ -49,22 +42,24 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ status: "error", message: "Nhiễu dữ liệu." });
         }
 
-        // 2. Lưu dữ liệu raw vào Database
+        // 2. Lưu dữ liệu raw vào Database trước tiên để đảm bảo luôn có kết quả
         const healthLogQuery = `INSERT INTO pet_health_logs (pet_id, behavior_code, heart_rate, temp_celsius, humidity) VALUES ($1, $2, $3, $4, $5) RETURNING *;`;
         const result = await pool.query(healthLogQuery, [pet_id, behavior_code, heart_rate, temp_celsius, humidity]);
 
         // 3. Phát sóng dữ liệu thời gian thực qua Socket.io về App
         req.io.emit(`new_health_data_${pet_id}`, result.rows[0]);
-        // 1. Phát hiện vòng cổ bị tuột hoặc tháo ra (Nhịp tim = 0 hoặc < 40)
+
+        // ==========================================
+        // 4. BỘ LỌC CẢM BIẾN (Tuột vòng cổ)
+        // ==========================================
         if (heart_rate < 40 || temp_celsius < 32) {
             console.log(`⚠️ [SENSOR DETACHED] Thú cưng ID ${pet_id} có thể đã tháo vòng cổ.`);
             
-            // THUẬT TOÁN CHỐNG SPAM: Kiểm tra xem 30 phút qua đã báo tuột vòng cổ chưa?
+            // Chống spam 30 phút
             const checkSpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = '⚠️ Collar Detached' AND created_at >= NOW() - INTERVAL '30 minutes'`;
             const spamResult = await pool.query(checkSpamQuery, [pet_id]);
             
             if (parseInt(spamResult.rows[0].count) === 0) {
-                // Nếu chưa báo, thì tiến hành gửi Push Notification
                 const alertTitle = "⚠️ Collar Detached";
                 const alertMessage = "The sensor is not detecting skin contact. Please check if the collar is loose or has fallen off.";
                 
@@ -82,7 +77,7 @@ router.post('/', authenticateToken, async (req, res) => {
                 });
             }
 
-            // NGẮT NGAY KHÔNG CHẠY AI CẢNH BÁO
+            // An toàn thoát luồng với dữ liệu trả về đúng chuẩn
             return res.status(201).json({ 
                 status: "success", 
                 message: "Collar detached. AI Alert bypassed.",
@@ -90,51 +85,50 @@ router.post('/', authenticateToken, async (req, res) => {
             });
         }
 
-        // 2. Thuật toán bù trừ nhiệt độ (Da -> Cốt lõi)
-        // Cộng thêm 1.5 độ C để bù trừ lớp lông và môi trường ngoài
+        // ==========================================
+        // 5. CHẠY AI & CẢNH BÁO SỨC KHỎE
+        // ==========================================
         const coreTempCelsius = temp_celsius + 1.5;
-        // 4. CHẠY SUY LUẬN AI (Dự đoán mức độ nguy hiểm)
+        
+        // Đã sửa: Truyền đúng coreTempCelsius vào AI
         const alertLevel = predictAlertLevel(aiModel, { 
             heart_rate: heart_rate, 
-            temp_celsius: temp_celsius, 
+            temp_celsius: coreTempCelsius, 
             behavior_code: behavior_code 
         });
 
         console.log(`🤖 [AI PREDICTION] Thú cưng ID ${pet_id} có mức độ rủi ro là: ${alertLevel}`);
 
-        let alertTitle = null;
-        let alertMessage = null;
+        if (alertLevel === 1 || alertLevel === 2) {
+            const alertTitle = alertLevel === 1 ? "⚠️ Health Alert (Warning)" : "🚨 Emergency Alert (Danger)!";
+            const alertMessage = alertLevel === 1 
+                ? `Abnormal health signs detected. Heart Rate: ${heart_rate} bpm, Temp: ${temp_celsius}°C. Please check your pet.` 
+                : `Critical health status detected! Heart Rate: ${heart_rate} bpm, Temp: ${temp_celsius}°C. Inspect immediately!`;
 
-        // Phân loại nội dung thông báo dựa trên nhãn dự đoán của AI
-        if (alertLevel === 1) {
-            alertTitle = "⚠️ Health Alert (Warning)";
-            alertMessage = `Abnormal health signs detected. Heart Rate: ${heart_rate} bpm, Temp: ${temp_celsius}°C. Please check your pet.`;
-        } else if (alertLevel === 2) {
-            alertTitle = "🚨 Emergency Alert (Danger)!";
-            alertMessage = `Critical health status detected! Heart Rate: ${heart_rate} bpm, Temp: ${temp_celsius}°C. Inspect immediately!`;
-        }
+            // THUẬT TOÁN CHỐNG SPAM AI (10 Phút / lần) để tránh sập Socket
+            const checkAISpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = $2 AND created_at >= NOW() - INTERVAL '10 minutes'`;
+            const aiSpamResult = await pool.query(checkAISpamQuery, [pet_id, alertTitle]);
 
-        // 5. Nếu AI phát hiện bất thường, tiến hành tạo thông báo trong DB và bắn notify Real-time
-        if (alertTitle) {
-            const ownersResult = await pool.query(`SELECT user_id FROM user_pets WHERE pet_id = $1`, [pet_id]);
-            
-            const notifications = await Promise.all(ownersResult.rows.map(async (owner) => {
-                const notiResult = await pool.query(
-                    `INSERT INTO notifications (user_id, pet_id, title, message) VALUES ($1, $2, $3, $4) RETURNING *;`, 
-                    [owner.user_id, pet_id, alertTitle, alertMessage]
-                );
-                return notiResult.rows[0];
-            }));
-            
-            notifications.forEach(noti => {
-                req.io.emit(`new_alert_user_${noti.user_id}`, noti);
-            });
+            if (parseInt(aiSpamResult.rows[0].count) === 0) {
+                const ownersResult = await pool.query(`SELECT user_id FROM user_pets WHERE pet_id = $1`, [pet_id]);
+                const notifications = await Promise.all(ownersResult.rows.map(async (owner) => {
+                    const notiResult = await pool.query(
+                        `INSERT INTO notifications (user_id, pet_id, title, message) VALUES ($1, $2, $3, $4) RETURNING *;`, 
+                        [owner.user_id, pet_id, alertTitle, alertMessage]
+                    );
+                    return notiResult.rows[0];
+                }));
+                
+                notifications.forEach(noti => {
+                    req.io.emit(`new_alert_user_${noti.user_id}`, noti);
+                });
+            }
         }
 
         res.status(201).json({ status: "success", data: result.rows[0] });
     } catch (error) {
         console.error('❌ Lỗi xử lý API Health Logs:', error); 
-        res.status(500).json({ status: "error", message: "Lỗi máy cushions nội bộ" });
+        res.status(500).json({ status: "error", message: "Lỗi máy chủ nội bộ" });
     }
 });
 

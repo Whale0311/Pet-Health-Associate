@@ -273,7 +273,7 @@ export default function HomeScreen() {
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    date.setHours(date.getHours() + 7);
+    //date.setHours(date.getHours() + 7);
     
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')} - ${date.getDate()}/${date.getMonth()+1}`;
   };
@@ -683,7 +683,7 @@ const handleChangePassword = async () => {
                   keyExtractor={(item) => item.noti_id.toString()}
                   showsVerticalScrollIndicator={true}
                   renderItem={({ item }) => {
-                    // Thiết kế thanh nền màu đỏ xuất hiện khi quẹt
+                    // Thiết kế thanh nền màu đỏ xuất hiện khi quẹt (Có flex: 1 để khớp kích thước)
                     const renderDeleteAction = () => (
                       <View style={styles.deleteSwipeBackground}>
                         <Ionicons name="trash" size={22} color="#FFF" />
@@ -691,25 +691,32 @@ const handleChangePassword = async () => {
                     );
 
                     return (
-                      <Swipeable
-                        renderLeftActions={renderDeleteAction}  // Quẹt sang phải để xóa
-                        renderRightActions={renderDeleteAction} // Quẹt sang trái để xóa
-                        onSwipeableOpen={() => handleDeleteNotification(item.noti_id)} // Kích hoạt xóa luôn không cần hỏi
-                      >
-                        {/* Khối giao diện tin nhắn gốc của bạn giữ nguyên */}
-                        <View style={[styles.notifItem, !item.is_read && styles.notifItemUnread]}>
-                          <View style={styles.notifIconBox}>
-                            <Ionicons name={item.title.includes('Emergency') || item.title.includes('Danger') ? "warning" : "information-circle"} size={22} color={item.title.includes('Emergency') || item.title.includes('Danger') ? "#E53935" : "#FDCB58"} />
+                      <View style={styles.swipeableContainer}>
+                        <Swipeable
+                          renderLeftActions={renderDeleteAction}
+                          renderRightActions={renderDeleteAction}
+                          onSwipeableOpen={() => handleDeleteNotification(item.noti_id)}
+                          containerStyle={styles.swipeableWrapper}
+                        >
+                          {/* Khối giao diện tin nhắn - Thêm style width: '100%' để ép không bị co lệch */}
+                          <View style={[styles.notifItem, !item.is_read && styles.notifItemUnread, { width: '100%' }]}>
+                            <View style={styles.notifIconBox}>
+                              <Ionicons 
+                                name={item.title.includes('Emergency') || item.title.includes('Danger') || item.title.includes('Detached') ? "warning" : "information-circle"} 
+                                size={22} 
+                                color={item.title.includes('Emergency') || item.title.includes('Danger') || item.title.includes('Detached') ? "#E53935" : "#FDCB58"} 
+                              />
+                            </View>
+                            <View style={styles.notifTextContainer}>
+                              <Text style={[styles.notifTitle, !item.is_read && { fontWeight: 'bold', color: '#000' }]}>
+                                {item.pet_name ? `[${item.pet_name}] ` : ''}{item.title}
+                              </Text>
+                              <Text style={styles.notifMessage}>{item.message}</Text>
+                              <Text style={styles.notifTime}>{formatTime(item.created_at)}</Text>
+                            </View>
                           </View>
-                          <View style={styles.notifTextContainer}>
-                            <Text style={[styles.notifTitle, !item.is_read && { fontWeight: 'bold', color: '#000' }]}>
-                              {item.pet_name ? `[${item.pet_name}] ` : ''}{item.title}
-                            </Text>
-                            <Text style={styles.notifMessage}>{item.message}</Text>
-                            <Text style={styles.notifTime}>{formatTime(item.created_at)}</Text>
-                          </View>
-                        </View>
-                      </Swipeable>
+                        </Swipeable>
+                      </View>
                     );
                   }}
                 />
@@ -826,14 +833,23 @@ const handleChangePassword = async () => {
 }
 
 const styles = StyleSheet.create({
+  // Sửa lại class deleteSwipeBackground cũ và thêm 2 class mới này vào:
+  swipeableContainer: {
+    marginBottom: 8,
+    borderRadius: 15,
+    overflow: 'hidden', // Ép các thành phần con không tràn ra ngoài bo góc
+  },
+  swipeableWrapper: {
+    width: '100%',
+    backgroundColor: 'transparent',
+  },
   deleteSwipeBackground: {
     backgroundColor: '#E53935',
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-    height: '92%', // Khớp mượt với bo góc của item tin nhắn
-    borderRadius: 10,
-    marginVertical: 2,
+    width: 60, // Giới hạn chiều rộng vùng nút xóa khi quẹt nhẹ, nếu quẹt mạnh sẽ tự động ăn hết dòng
+    height: '100%',
+    borderRadius: 15,
   },
   genderCardBadge: {
     paddingHorizontal: 8,
@@ -884,8 +900,14 @@ const styles = StyleSheet.create({
   },
   notifHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingHorizontal: 5 },
   notifModalTitle: { fontSize: 20, fontWeight: 'bold', color: '#3E2723' },
-  
-  notifItem: { flexDirection: 'row', backgroundColor: '#FFF', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  notifItem: { 
+    flexDirection: 'row', 
+    backgroundColor: '#FFF', 
+    paddingVertical: 12, 
+    paddingHorizontal: 12, 
+    borderRadius: 15,
+    alignItems: 'center'
+  },
   notifItemUnread: { backgroundColor: '#FFF8E1', borderRadius: 10, paddingHorizontal: 10, borderBottomWidth: 0, marginBottom: 5 },
   notifIconBox: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 2 },
   notifTextContainer: { flex: 1 },
