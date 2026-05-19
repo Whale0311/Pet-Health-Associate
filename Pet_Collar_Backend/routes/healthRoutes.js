@@ -41,6 +41,11 @@ router.post('/', authenticateToken, async (req, res) => {
         if (heart_rate < 0 || heart_rate > 300 || temp_celsius < 10 || temp_celsius > 50) {
             return res.status(400).json({ status: "error", message: "Nhiễu dữ liệu." });
         }
+        const checkPet = await pool.query('SELECT pet_id FROM pets WHERE pet_id = $1', [pet_id]);
+        if (checkPet.rowCount === 0) {
+            console.log(`⚠️ [GHOST PET] Bỏ qua dữ liệu của Pet ID ${pet_id} vì đã bị xóa.`);
+            return res.status(404).json({ status: "error", message: "Thú cưng không tồn tại hoặc đã bị xóa." });
+        }
 
         // 2. Lưu dữ liệu raw vào Database trước tiên để đảm bảo luôn có kết quả
         const healthLogQuery = `INSERT INTO pet_health_logs (pet_id, behavior_code, heart_rate, temp_celsius, humidity) VALUES ($1, $2, $3, $4, $5) RETURNING *;`;
