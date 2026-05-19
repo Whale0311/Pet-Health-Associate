@@ -55,7 +55,21 @@ router.post('/', authenticateToken, async (req, res) => {
 
         // 3. Phát sóng dữ liệu thời gian thực qua Socket.io về App
         req.io.emit(`new_health_data_${pet_id}`, result.rows[0]);
+        // 1. Phát hiện vòng cổ bị tuột hoặc tháo ra (Nhịp tim = 0 hoặc < 40)
+        if (heart_rate < 40 || temp_celsius < 32) {
+            console.log(`⚠️ [SENSOR DETACHED] Thú cưng ID ${pet_id} có thể đã tháo vòng cổ.`);
+            
+            // Chỉ lưu vào DB để vẽ biểu đồ, NGẮT NGAY KHÔNG CHẠY AI CẢNH BÁO
+            return res.status(201).json({ 
+                status: "success", 
+                message: "Collar detached or signal too weak. AI Alert bypassed.",
+                data: result.rows[0] 
+            });
+        }
 
+        // 2. Thuật toán bù trừ nhiệt độ (Da -> Cốt lõi)
+        // Cộng thêm 1.5 độ C để bù trừ lớp lông và môi trường ngoài
+        const coreTempCelsius = temp_celsius + 1.5;
         // 4. CHẠY SUY LUẬN AI (Dự đoán mức độ nguy hiểm)
         const alertLevel = predictAlertLevel(aiModel, { 
             heart_rate: heart_rate, 

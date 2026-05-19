@@ -261,9 +261,9 @@ export default function HomeScreen() {
 
   const handleLogout = async () => {
     setShowProfileMenu(false);
-    Alert.alert("Đăng xuất", "Bạn có chắc chắn muốn đăng xuất?", [
-      { text: "Hủy", style: "cancel" },
-      { text: "Đăng xuất", style: "destructive", onPress: async () => { await AsyncStorage.clear(); router.replace('/'); } }
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign Out", style: "destructive", onPress: async () => { await AsyncStorage.clear(); router.replace('/'); } }
     ]);
   };
 
@@ -287,8 +287,8 @@ export default function HomeScreen() {
   const exitSelectionMode = () => { setIsInSelectionMode(false); setSelectedPetIds(new Set()); };
 
   const confirmDeleteSelected = () => {
-    Alert.alert("Xóa thú cưng", `Bạn có chắc muốn xóa ${selectedPetIds.size} hồ sơ đã chọn?`, [
-      { text: "Hủy", style: "cancel" }, { text: "Xóa", style: "destructive", onPress: executeDeleteSelected }
+    Alert.alert("Remove Pet", `Are you sure you want to remove ${selectedPetIds.size} selected pets?`, [
+      { text: "Cancel", style: "cancel" }, { text: "Remove", style: "destructive", onPress: executeDeleteSelected }
     ]);
   };
 
@@ -300,10 +300,10 @@ export default function HomeScreen() {
       const SERVER_URL_BASE = 'https://pet-collar-backend.onrender.com/api/pets'; 
       const deletePromises = idsArray.map(petId => axios.delete(`${SERVER_URL_BASE}/${petId}`, { headers: { Authorization: `Bearer ${token}` } }));
       await Promise.all(deletePromises);
-      Alert.alert("Thành công", `Đã xóa ${idsArray.length} thú cưng khỏi hệ thống.`);
+      Alert.alert("Success", `Successfully removed ${idsArray.length} pets from the system.`);
       loadUserData(); exitSelectionMode();
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể xóa hồ sơ."); exitSelectionMode();
+      Alert.alert("Error", "Failed to delete pet profiles."); exitSelectionMode();
     } finally {
       setLoading(false);
     }
@@ -401,17 +401,17 @@ export default function HomeScreen() {
       });
 
       if (response.data.status === 'success') {
-        Alert.alert("Thành công!", "Đã kết nối theo dõi thú cưng cùng người thân.");
+        Alert.alert("Success!", "Successfully connected to follow the pet.");
         resetAddPetForm();
       }
     } catch (error: any) {
-      Alert.alert("Lỗi", error.response?.data?.message || "Không thể tham gia theo dõi.");
+      Alert.alert("Error", error.response?.data?.message || "Failed to join pet following.");
     }
   };
 
   // --- HÀM TẠO THÚ CƯNG MỚI ---
   const handleAddPet = async () => {
-    if (!newPetName || !newPetMac) { Alert.alert("Thiếu thông tin", "Nhập tên và quét MAC!"); return; }
+    if (!newPetName || !newPetMac) { Alert.alert("Error", "Please enter the pet's name and scan the MAC address!"); return; }
     try {
       const token = await AsyncStorage.getItem('userToken');
       const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/pets'; 
@@ -427,7 +427,7 @@ export default function HomeScreen() {
       const response = await axios.post(SERVER_URL, payload, { headers: { Authorization: `Bearer ${token}` } });
       
       if (response.data.status === 'success') {
-        Alert.alert("Thành công!", "Đã thêm thú cưng mới."); 
+        Alert.alert("Success!", "Successfully added new pet."); 
         resetAddPetForm();
       }
     } catch (error: any) {
@@ -437,15 +437,15 @@ export default function HomeScreen() {
       // (Lưu ý: Chữ "tồn tại" hoặc "already" tùy thuộc vào câu báo lỗi mà Backend của bạn trả về)
       if (errorMsg.includes("tồn tại") || errorMsg.includes("already") || error.response?.status === 400) {
         Alert.alert(
-          "Phát hiện vòng cổ",
-          "Vòng cổ này đã được đăng ký trên hệ thống. Bạn có muốn tham gia theo dõi bé cưng này không?",
+          "Device Detected",
+          "This device has already been registered in the system. Do you want to join following this pet?",
           [
-            { text: "Hủy bỏ", style: "cancel" },
-            { text: "Tham gia", onPress: () => handleJoinPet(newPetMac) }
+            { text: "Cancel", style: "cancel" },
+            { text: "Join", onPress: () => handleJoinPet(newPetMac) }
           ]
         );
       } else {
-        Alert.alert("Lỗi", errorMsg || "Không thể kết nối với máy chủ.");
+        Alert.alert("Error", errorMsg || "Failed to connect to the server.");
       }
     }
   };
@@ -453,13 +453,13 @@ export default function HomeScreen() {
 const handleChangePassword = async () => {
     // 1. Kiểm tra xem người dùng đã nhập đủ các ô chưa
     if (!currentPassword || !newPassword || !confirmNewPassword) {
-      Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin!");
+      Alert.alert("Error", "Please fill in all fields!");
       return;
     }
 
     // 2. Kiểm tra mật khẩu xác nhận
     if (newPassword !== confirmNewPassword) {
-      Alert.alert("Lỗi", "Mật khẩu xác nhận không khớp!");
+      Alert.alert("Error", "The confirmation password does not match!");
       return;
     }
 
@@ -481,7 +481,7 @@ const handleChangePassword = async () => {
 
       // 5. Nếu thành công, thông báo và dọn dẹp Form
       if (response.data.status === 'success') {
-        Alert.alert("Thành công!", response.data.message);
+        Alert.alert("Success!", response.data.message);
         setShowPasswordModal(false);
         setCurrentPassword('');
         setNewPassword('');
@@ -490,9 +490,9 @@ const handleChangePassword = async () => {
     } catch (error: any) {
       // 6. Bắt lỗi (sai mật khẩu cũ, trùng mật khẩu...) từ Backend gửi lên
       if (error.response && error.response.data && error.response.data.message) {
-        Alert.alert("Lỗi", error.response.data.message);
+        Alert.alert("Error", error.response.data.message);
       } else {
-        Alert.alert("Lỗi", "Không thể kết nối với máy chủ.");
+        Alert.alert("Error", "Failed to connect to the server.");
       }
     }
   };
@@ -526,10 +526,24 @@ const handleChangePassword = async () => {
             )}
           </View>
           
-          <Text style={styles.petDetail}>
-            {item.gender === 'Male' ? '♂ Male' : item.gender === 'Female' ? '♀ Female' : '🐾 Unknown'} 
-            {item.weight ? ` • ${item.weight} kg` : ''}
-          </Text>
+          {/* Hàng ngang chứa Huy hiệu Giới tính và Cân nặng */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
+            <View style={[
+              styles.genderCardBadge,
+              item.gender === 'Male' ? { backgroundColor: '#E3F2FD' } : item.gender === 'Female' ? { backgroundColor: '#FCE4EC' } : { backgroundColor: '#E0E0E0' }
+            ]}>
+              <Text style={[
+                styles.genderCardText,
+                item.gender === 'Male' ? { color: '#1976D2' } : item.gender === 'Female' ? { color: '#C2185B' } : { color: '#666' }
+              ]}>
+                {item.gender === 'Male' ? '♂' : item.gender === 'Female' ? '♀' : '🐾'}
+              </Text>
+            </View>
+            
+            {item.weight ? (
+              <Text style={[styles.petDetail, { marginTop: 0 }]}>• {item.weight} kg</Text>
+            ) : null}
+          </View>
 
           <View style={styles.quickStatsGrid}>
             <Text style={styles.quickStatText}>❤️ {liveState.heartRate} bpm</Text>
@@ -554,7 +568,7 @@ const handleChangePassword = async () => {
                <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/1077/1077114.png' }} style={styles.profileAvatar} />
             </TouchableOpacity>
             <View style={styles.welcomeContainer}>
-              <Text style={styles.welcomeText}>Xin chào,</Text>
+              <Text style={styles.welcomeText}>Welcome,</Text>
               <Text style={styles.welcomeName}>{userName}</Text>
             </View>
           </View>
@@ -573,9 +587,9 @@ const handleChangePassword = async () => {
           {isInSelectionMode ? (
             <View style={styles.selectionModeHeader}>
               <TouchableOpacity onPress={exitSelectionMode} style={styles.selectionCancelBtn}><Ionicons name="close" size={24} color="#FFF" /></TouchableOpacity>
-              <Text style={styles.selectionCount}>{selectedPetIds.size} thú cưng đã chọn</Text>
+              <Text style={styles.selectionCount}>{selectedPetIds.size} selected</Text>
               <TouchableOpacity onPress={confirmDeleteSelected} style={styles.selectionDeleteBtn}>
-                  <Ionicons name="trash" size={20} color="#FFF" /><Text style={styles.selectionDeleteText}>Xóa</Text>
+                  <Ionicons name="trash" size={20} color="#FFF" /><Text style={styles.selectionDeleteText}>Delete</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -594,10 +608,10 @@ const handleChangePassword = async () => {
           ) : pets.length === 0 ? (
             <View style={styles.emptyState}>
               <Image source={{ uri: 'https://cdn-icons-png.flaticon.com/512/3047/3047886.png' }} style={styles.emptyImage} />
-              <Text style={styles.emptyText}>Chưa có thú cưng nào!</Text>
-              <Text style={styles.emptySubText}>Gắn vòng cổ để theo dõi sức khỏe cho thú cưng của bạn nhé.</Text>
+              <Text style={styles.emptyText}>No pets yet!</Text>
+              <Text style={styles.emptySubText}>Attach a collar to start monitoring your pet's health.</Text>
               <TouchableOpacity style={styles.bigAddBtn} onPress={startScanBLE} activeOpacity={0.8}>
-                <Text style={styles.bigAddBtnText}>Tìm Vòng Cổ & Thêm</Text>
+                <Text style={styles.bigAddBtnText}>Scan Collar & Add Pet</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -622,11 +636,11 @@ const handleChangePassword = async () => {
             {/* Khối dropdown (Dùng View bình thường để KHÔNG chặn thao tác cuộn của FlatList) */}
             <View style={styles.notifDropdown}>
               <View style={styles.notifHeaderRow}>
-                <Text style={styles.notifModalTitle}>Thông báo</Text>
+                <Text style={styles.notifModalTitle}>Notifications</Text>
               </View>
 
               {notifications.length === 0 ? (
-                <Text style={{ textAlign: 'center', marginTop: 30, marginBottom: 40, color: '#888' }}>Chưa có thông báo nào.</Text>
+                <Text style={{ textAlign: 'center', marginTop: 30, marginBottom: 40, color: '#888' }}>No notifications yet.</Text>
               ) : (
                 <FlatList
                   data={notifications}
@@ -658,11 +672,11 @@ const handleChangePassword = async () => {
           <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowProfileMenu(false)}>
             <View style={styles.dropdownMenu}>
               <TouchableOpacity style={styles.dropdownItem} onPress={() => { setShowProfileMenu(false); setShowPasswordModal(true); }}>
-                <Ionicons name="lock-closed-outline" size={20} color="#3E2723" /><Text style={styles.dropdownText}>Đổi mật khẩu</Text>
+                <Ionicons name="lock-closed-outline" size={20} color="#3E2723" /><Text style={styles.dropdownText}>Change Password</Text>
               </TouchableOpacity>
               <View style={styles.divider} />
               <TouchableOpacity style={styles.dropdownItem} onPress={handleLogout}>
-                <Ionicons name="log-out-outline" size={20} color="#E53935" /><Text style={[styles.dropdownText, { color: '#E53935' }]}>Đăng xuất</Text>
+                <Ionicons name="log-out-outline" size={20} color="#E53935" /><Text style={[styles.dropdownText, { color: '#E53935' }]}>Logout</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -671,14 +685,14 @@ const handleChangePassword = async () => {
         <Modal visible={showPasswordModal} transparent={true} animationType="slide">
           <View style={styles.passwordModalContainer}>
             <View style={styles.passwordModalContent}>
-              <Text style={styles.modalTitle}>Đổi Mật Khẩu</Text>
-              <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Mật khẩu hiện tại" secureTextEntry={!showPass} value={currentPassword} onChangeText={setCurrentPassword} /></View>
-              <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Mật khẩu mới" secureTextEntry={!showPass} value={newPassword} onChangeText={setNewPassword} /></View>
-              <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Xác nhận mật khẩu mới" secureTextEntry={!showPass} value={confirmNewPassword} onChangeText={setConfirmNewPassword} /></View>
-              <TouchableOpacity onPress={() => setShowPass(!showPass)} style={styles.eyeBtn}><Text style={styles.eyeText}>{showPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}</Text></TouchableOpacity>
+              <Text style={styles.modalTitle}>Change Password</Text>
+              <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Current Password" secureTextEntry={!showPass} value={currentPassword} onChangeText={setCurrentPassword} /></View>
+              <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="New Password" secureTextEntry={!showPass} value={newPassword} onChangeText={setNewPassword} /></View>
+              <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Confirm New Password" secureTextEntry={!showPass} value={confirmNewPassword} onChangeText={setConfirmNewPassword} /></View>
+              <TouchableOpacity onPress={() => setShowPass(!showPass)} style={styles.eyeBtn}><Text style={styles.eyeText}>{showPass ? 'Hide Password' : 'Show Password'}</Text></TouchableOpacity>
               <View style={styles.modalActionRow}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowPasswordModal(false)}><Text style={styles.cancelBtnText}>Hủy</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.saveBtn} onPress={handleChangePassword}><Text style={styles.saveBtnText}>Lưu</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowPasswordModal(false)}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleChangePassword}><Text style={styles.saveBtnText}>Save</Text></TouchableOpacity>
               </View>
             </View>
           </View>
@@ -687,23 +701,23 @@ const handleChangePassword = async () => {
         <Modal visible={showScanModal} transparent={true} animationType="slide">
           <View style={styles.passwordModalContainer}>
             <View style={[styles.passwordModalContent, { minHeight: 400 }]}>
-              <Text style={styles.modalTitle}>Tìm Vòng Cổ</Text>
+              <Text style={styles.modalTitle}>Scan for Collar</Text>
               {isScanning && <ActivityIndicator size="large" color="#FDCB58" style={{ marginVertical: 20 }} />}
-              {!isScanning && scannedDevices.length === 0 && <Text style={{ textAlign: 'center', color: '#888', marginVertical: 20 }}>Không tìm thấy thiết bị nào.</Text>}
+              {!isScanning && scannedDevices.length === 0 && <Text style={{ textAlign: 'center', color: '#888', marginVertical: 20 }}>No collars found nearby.</Text>}
               <FlatList
                 data={scannedDevices} keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                   <TouchableOpacity style={styles.deviceItem} onPress={() => handleSelectDevice(item)}>
                     <Ionicons name="bluetooth" size={24} color="#3E2723" style={{marginRight: 10}} />
                     <View>
-                      <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#333' }}>{item.name || 'Thiết bị ẩn danh'}</Text>
+                      <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#333' }}>{item.name || 'Unknown Device'}</Text>
                       <Text style={{ color: '#888', fontSize: 12 }}>MAC: {item.id}</Text>
                     </View>
                   </TouchableOpacity>
                 )}
               />
               <TouchableOpacity style={[styles.cancelBtn, { marginTop: 20, width: '100%', paddingVertical: 15 }]} onPress={() => { bleManager.stopDeviceScan(); setIsScanning(false); setShowScanModal(false); }}>
-                <Text style={styles.cancelBtnText}>Hủy quét</Text>
+                <Text style={styles.cancelBtnText}>Cancel Scan</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -713,36 +727,64 @@ const handleChangePassword = async () => {
           <View style={styles.passwordModalContainer}>
             <View style={[styles.passwordModalContent, { maxHeight: '80%' }]}>
               <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalTitle}>Hồ Sơ Thú Cưng</Text>
+                <Text style={styles.modalTitle}>Pet Profile</Text>
                 <TouchableOpacity style={styles.imagePickerContainer} onPress={pickImage}>
                   {newPetImageUri ? <Image source={{ uri: newPetImageUri }} style={styles.pickedImage} /> : (
-                    <View style={styles.imagePlaceholder}><Ionicons name="camera-outline" size={32} color="#8D6E63" /><Text style={styles.imagePlaceholderText}>Thêm ảnh</Text></View>
+                    <View style={styles.imagePlaceholder}><Ionicons name="camera-outline" size={32} color="#8D6E63" /><Text style={styles.imagePlaceholderText}>Add Image</Text></View>
                   )}
                 </TouchableOpacity>
-                <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Tên thú cưng (Ví dụ: Lu)" value={newPetName} onChangeText={setNewPetName} /></View>
+                <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Pet's Name (e.g., Lu)" value={newPetName} onChangeText={setNewPetName} /></View>
                 <View style={styles.genderRow}>
-                  <TouchableOpacity onPress={() => setNewPetGender('Male')} style={[styles.genderBtn, newPetGender === 'Male' && styles.genderBtnActive]}><Text style={[styles.genderText, newPetGender === 'Male' && styles.genderTextActive]}>Đực</Text></TouchableOpacity>
-                  <TouchableOpacity onPress={() => setNewPetGender('Female')} style={[styles.genderBtn, newPetGender === 'Female' && styles.genderBtnActive]}><Text style={[styles.genderText, newPetGender === 'Female' && styles.genderTextActive]}>Cái</Text></TouchableOpacity>
+                  <TouchableOpacity 
+                    onPress={() => setNewPetGender('Male')} 
+                    style={[
+                      styles.genderBtn, 
+                      newPetGender === 'Male' ? { backgroundColor: '#E3F2FD', borderColor: '#2196F3', borderWidth: 2 } : { backgroundColor: '#F5F5F5', borderWidth: 2, borderColor: 'transparent' }
+                    ]}
+                  >
+                    <Text style={[styles.genderText, { fontSize: 24 }, newPetGender === 'Male' ? { color: '#1976D2' } : { color: '#AAA' }]}>♂</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    onPress={() => setNewPetGender('Female')} 
+                    style={[
+                      styles.genderBtn, 
+                      newPetGender === 'Female' ? { backgroundColor: '#FCE4EC', borderColor: '#E91E63', borderWidth: 2 } : { backgroundColor: '#F5F5F5', borderWidth: 2, borderColor: 'transparent' }
+                    ]}
+                  >
+                    <Text style={[styles.genderText, { fontSize: 24 }, newPetGender === 'Female' ? { color: '#C2185B' } : { color: '#AAA' }]}>♀</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDatePicker(true)}><Text style={{ flex: 1, fontSize: 15, color: newPetDob ? '#333' : '#888', marginTop: 14 }}>{newPetDob ? newPetDob.toISOString().split('T')[0] : 'Ngày sinh (Tùy chọn)'}</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDatePicker(true)}><Text style={{ flex: 1, fontSize: 15, color: newPetDob ? '#333' : '#888', marginTop: 14 }}>{newPetDob ? newPetDob.toISOString().split('T')[0] : 'Date of Birth (Optional)'}</Text></TouchableOpacity>
                 {showDatePicker && <DateTimePicker value={newPetDob || new Date()} mode="date" display="default" maximumDate={new Date()} onChange={onChangeDate} />}
-                <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Cân nặng (kg)" keyboardType="numeric" value={newPetWeight} onChangeText={setNewPetWeight} /></View>
+                <View style={styles.inputWrapper}><TextInput style={styles.input} placeholderTextColor="#888" placeholder="Weight (kg)" keyboardType="numeric" value={newPetWeight} onChangeText={setNewPetWeight} /></View>
                 <View style={[styles.inputWrapper, { backgroundColor: '#E0E0E0' }]}><TextInput style={[styles.input, { color: '#666' }]} placeholderTextColor="#888" placeholder="MAC Address" value={newPetMac} editable={false} /></View>
                 <View style={styles.modalActionRow}>
-                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddPetModal(false)}><Text style={styles.cancelBtnText}>Hủy</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.saveBtn} onPress={handleAddPet}><Text style={styles.saveBtnText}>Hoàn tất</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddPetModal(false)}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleAddPet}><Text style={styles.saveBtnText}>Save</Text></TouchableOpacity>
                 </View>
               </ScrollView>
             </View>
           </View>
         </Modal>
-
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  genderCardBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 1, // Tạo bóng đổ nhẹ cho nút nổi lên
+  },
+  genderCardText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   cardStatusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 5 },
   statusLabelText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
