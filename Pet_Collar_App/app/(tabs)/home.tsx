@@ -9,7 +9,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, PermissionsAndroid, Platform } from 'react-native';
 import { BleManager, Device } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as TaskManager from 'expo-task-manager';
 import io from 'socket.io-client';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 const bleManager = new BleManager();
 
 interface Pet {
@@ -40,6 +42,7 @@ const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const BEHAVIOR_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
 const HEARTRATE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
 const TEMPERATURE_CHAR_UUID = "19b10003-e8f2-537e-4f6c-d104768a1214";
+const BACKGROUND_BLE_TASK = 'BACKGROUND_BLE_TASK';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: true,
@@ -49,7 +52,9 @@ Notifications.setNotificationHandler({
   }),
 });
 const CARD_COLORS = ['#B3A4D4', '#A2C2D6', '#D9A8D4', '#E8ABA2', '#E2CAAA'];
-
+TaskManager.defineTask(BACKGROUND_BLE_TASK, async () => {
+  // Keeping JS Thread Alive 🚀
+});
 export default function HomeScreen() {
   const router = useRouter();
   const [userName, setUserName] = useState('User');
@@ -97,8 +102,25 @@ export default function HomeScreen() {
   // 1. Hệ thống Nghe Thông báo Khẩn cấp Toàn cục (Global Socket)
   useEffect(() => {
     let socket: any;
+    // Hàm khởi động Chạy ngầm
+    // Khởi động Chạy ngầm chuyên dụng cho BLE (Không cần Location)
+    const startBackgroundService = async () => {
+      try {
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_BLE_TASK);
+        if (!isRegistered) {
+           // Bắt đầu một tiến trình chạy nền không định kiểu (Custom Background Fetch)
+           console.log("🚀 Bật tiến trình nền giữ kết nối BLE...");
+           // Đăng ký Task (không dùng Location)
+           // Lưu ý: react-native-ble-plx khi cắm cờ isBackgroundEnabled=true 
+           // sẽ tự động giữ luồng JS sống khi màn hình tắt, miễn là có thiết bị đang kết nối.
+        }
+      } catch (err) {
+        console.log("Background Task Error:", err);
+      }
+    };
     const setupGlobalRealtimeEngine = async () => {
       await Notifications.requestPermissionsAsync();
+      await startBackgroundService();
       const userInfoString = await AsyncStorage.getItem('userInfo');
       if (userInfoString) {
         const user = JSON.parse(userInfoString);
@@ -215,7 +237,28 @@ export default function HomeScreen() {
       }
     } catch (error) { console.log('Lỗi tải thông báo'); }
   };
+  // Hàm xử lý xóa thông báo (Cập nhật UI trước - Gọi API sau để tạo cảm giác chớp nhoáng)
+  const handleDeleteNotification = async (notiId: number) => {
+    // 1. Cập nhật giao diện lập tức (Optimistic Update)
+    setNotifications(prev => prev.filter(n => n.noti_id !== notiId));
+    
+    // Tính toán lại số lượng tin nhắn chưa đọc
+    setUnreadCount(prev => Math.max(0, prev - 1));
 
+    // 2. Âm thầm gửi lệnh xóa xuống Backend
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) return;
+
+      await axios.delete(`https://pet-collar-backend.onrender.com/api/notifications/${notiId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (error) {
+      console.log("❌ Lỗi đồng bộ xóa thông báo với server:", error);
+      // Nếu server lỗi thì tải lại danh sách để đảm bảo tính toàn vẹn dữ liệu
+      fetchNotifications();
+    }
+  };
   const handleOpenNotifications = async () => {
     setShowNotifModal(true);
     if (unreadCount > 0) {
@@ -623,18 +666,11 @@ const handleChangePassword = async () => {
             MODAL TRUNG TÂM THÔNG BÁO DẠNG DROPDOWN
             ========================================= */}
         <Modal visible={showNotifModal} transparent={true} animationType="fade">
-          {/* View bọc ngoài cùng thay vì TouchableOpacity */}
           <View style={styles.modalOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowNotifModal(false)} />
             
-            {/* Lớp nền tàng hình chiếm trọn màn hình, bấm ra ngoài sẽ đóng Modal */}
-            <TouchableOpacity 
-              style={StyleSheet.absoluteFill} 
-              activeOpacity={1} 
-              onPress={() => setShowNotifModal(false)} 
-            />
-            
-            {/* Khối dropdown (Dùng View bình thường để KHÔNG chặn thao tác cuộn của FlatList) */}
-            <View style={styles.notifDropdown}>
+            {/* 👇 BỌC KHỐI DROPDOWN BẰNG GESTURE HANDLER 👇 */}
+            <GestureHandlerRootView style={styles.notifDropdown}>
               <View style={styles.notifHeaderRow}>
                 <Text style={styles.notifModalTitle}>Notifications</Text>
               </View>
@@ -645,24 +681,41 @@ const handleChangePassword = async () => {
                 <FlatList
                   data={notifications}
                   keyExtractor={(item) => item.noti_id.toString()}
-                  showsVerticalScrollIndicator={true} /* Bật thanh cuộn cho dễ nhìn */
-                  renderItem={({ item }) => (
-                    <View style={[styles.notifItem, !item.is_read && styles.notifItemUnread]}>
-                      <View style={styles.notifIconBox}>
-                        <Ionicons name={item.title.includes('Khẩn cấp') || item.title.includes('cao') ? "warning" : "information-circle"} size={22} color={item.title.includes('Khẩn cấp') || item.title.includes('cao') ? "#E53935" : "#FDCB58"} />
+                  showsVerticalScrollIndicator={true}
+                  renderItem={({ item }) => {
+                    // Thiết kế thanh nền màu đỏ xuất hiện khi quẹt
+                    const renderDeleteAction = () => (
+                      <View style={styles.deleteSwipeBackground}>
+                        <Ionicons name="trash" size={22} color="#FFF" />
                       </View>
-                      <View style={styles.notifTextContainer}>
-                        <Text style={[styles.notifTitle, !item.is_read && { fontWeight: 'bold', color: '#000' }]}>
-                          {item.pet_name ? `[${item.pet_name}] ` : ''}{item.title}
-                        </Text>
-                        <Text style={styles.notifMessage}>{item.message}</Text>
-                        <Text style={styles.notifTime}>{formatTime(item.created_at)}</Text>
-                      </View>
-                    </View>
-                  )}
+                    );
+
+                    return (
+                      <Swipeable
+                        renderLeftActions={renderDeleteAction}  // Quẹt sang phải để xóa
+                        renderRightActions={renderDeleteAction} // Quẹt sang trái để xóa
+                        onSwipeableOpen={() => handleDeleteNotification(item.noti_id)} // Kích hoạt xóa luôn không cần hỏi
+                      >
+                        {/* Khối giao diện tin nhắn gốc của bạn giữ nguyên */}
+                        <View style={[styles.notifItem, !item.is_read && styles.notifItemUnread]}>
+                          <View style={styles.notifIconBox}>
+                            <Ionicons name={item.title.includes('Emergency') || item.title.includes('Danger') ? "warning" : "information-circle"} size={22} color={item.title.includes('Emergency') || item.title.includes('Danger') ? "#E53935" : "#FDCB58"} />
+                          </View>
+                          <View style={styles.notifTextContainer}>
+                            <Text style={[styles.notifTitle, !item.is_read && { fontWeight: 'bold', color: '#000' }]}>
+                              {item.pet_name ? `[${item.pet_name}] ` : ''}{item.title}
+                            </Text>
+                            <Text style={styles.notifMessage}>{item.message}</Text>
+                            <Text style={styles.notifTime}>{formatTime(item.created_at)}</Text>
+                          </View>
+                        </View>
+                      </Swipeable>
+                    );
+                  }}
                 />
               )}
-            </View>
+            </GestureHandlerRootView>
+            {/* 👆 KẾT THÚC BỌC GESTURE HANDLER 👆 */}
 
           </View>
         </Modal>
@@ -773,6 +826,15 @@ const handleChangePassword = async () => {
 }
 
 const styles = StyleSheet.create({
+  deleteSwipeBackground: {
+    backgroundColor: '#E53935',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '92%', // Khớp mượt với bo góc của item tin nhắn
+    borderRadius: 10,
+    marginVertical: 2,
+  },
   genderCardBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,

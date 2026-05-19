@@ -59,10 +59,33 @@ router.post('/', authenticateToken, async (req, res) => {
         if (heart_rate < 40 || temp_celsius < 32) {
             console.log(`⚠️ [SENSOR DETACHED] Thú cưng ID ${pet_id} có thể đã tháo vòng cổ.`);
             
-            // Chỉ lưu vào DB để vẽ biểu đồ, NGẮT NGAY KHÔNG CHẠY AI CẢNH BÁO
+            // THUẬT TOÁN CHỐNG SPAM: Kiểm tra xem 30 phút qua đã báo tuột vòng cổ chưa?
+            const checkSpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = '⚠️ Collar Detached' AND created_at >= NOW() - INTERVAL '30 minutes'`;
+            const spamResult = await pool.query(checkSpamQuery, [pet_id]);
+            
+            if (parseInt(spamResult.rows[0].count) === 0) {
+                // Nếu chưa báo, thì tiến hành gửi Push Notification
+                const alertTitle = "⚠️ Collar Detached";
+                const alertMessage = "The sensor is not detecting skin contact. Please check if the collar is loose or has fallen off.";
+                
+                const ownersResult = await pool.query(`SELECT user_id FROM user_pets WHERE pet_id = $1`, [pet_id]);
+                const notifications = await Promise.all(ownersResult.rows.map(async (owner) => {
+                    const notiResult = await pool.query(
+                        `INSERT INTO notifications (user_id, pet_id, title, message) VALUES ($1, $2, $3, $4) RETURNING *;`, 
+                        [owner.user_id, pet_id, alertTitle, alertMessage]
+                    );
+                    return notiResult.rows[0];
+                }));
+                
+                notifications.forEach(noti => {
+                    req.io.emit(`new_alert_user_${noti.user_id}`, noti);
+                });
+            }
+
+            // NGẮT NGAY KHÔNG CHẠY AI CẢNH BÁO
             return res.status(201).json({ 
                 status: "success", 
-                message: "Collar detached or signal too weak. AI Alert bypassed.",
+                message: "Collar detached. AI Alert bypassed.",
                 data: result.rows[0] 
             });
         }

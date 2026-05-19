@@ -24,8 +24,8 @@
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.FOREGROUND_SERVICE"
       ],
       "package": "com.anonymous.Pet_Collar_App"
     },
@@ -50,18 +50,12 @@
       [
         "react-native-ble-plx",
         {
-          "isBackgroundEnabled": false,
+          "isBackgroundEnabled": true,
           "modes": [
             "peripheral",
             "central"
           ],
-          "bluetoothAlwaysPermission": "App cần quyền Bluetooth để tìm vòng cổ thú cưng."
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "App cần quyền Vị trí để quét Bluetooth trên Android."
+          "bluetoothAlwaysPermission": "App needs Bluetooth to monitor your pet's health."
         }
       ],
       "@react-native-community/datetimepicker"

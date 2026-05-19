@@ -30,5 +30,31 @@ router.put('/:notiId/read', authenticateToken, async (req, res) => {
         res.status(500).json({ status: "error", message: "Lỗi cập nhật" });
     }
 });
+// ==========================================
+// 🗑️ API XÓA MỘT THÔNG BÁO THEO ID
+// ==========================================
+router.delete('/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.user_id;
+        const notiId = req.params.id;
 
+        // Xóa thông báo phải đảm bảo đúng dòng của user đó sở hữu
+        const result = await pool.query(
+            'DELETE FROM notifications WHERE noti_id = $1 AND user_id = $2 RETURNING *',
+            [notiId, userId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ status: "error", message: "Notification not found or unauthorized." });
+        }
+
+        res.json({ 
+            status: "success", 
+            message: "Notification deleted successfully." 
+        });
+    } catch (error) {
+        console.error("❌ Lỗi xóa thông báo:", error);
+        res.status(500).json({ status: "error", message: "Internal server error" });
+    }
+});
 module.exports = router;

@@ -26,6 +26,7 @@ const BEHAVIOR_LABELS = [
   "Trotting (Chạy kiệu)", 
   "Walking (Đang đi)"
 ];
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: true,
@@ -34,9 +35,9 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
 export default function PetDashboardScreen() {
   const router = useRouter();
-  
   const params = useLocalSearchParams();
   const petId = params.id;
   const mac = params.mac as string;
@@ -49,12 +50,14 @@ export default function PetDashboardScreen() {
     image_url: params.image_url as string
   });
 
-  const [connectionStatus, setConnectionStatus] = useState<string>('Đang kết nối...');
+  const [connectionStatus, setConnectionStatus] = useState<string>('Connecting...');
+  const [isConnected, setIsConnected] = useState(false); // Thêm state kiểm soát kết nối thực sự
   const [heartRate, setHeartRate] = useState<number | string>('--');
   const [temperature, setTemperature] = useState<string>('--');
   const [behaviorCode, setBehaviorCode] = useState<number>(0); 
   const [activeTab, setActiveTab] = useState<'HR' | 'TEMP'>('HR');
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+
   // --- STATE MODAL EDIT ---
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState('');
@@ -71,23 +74,22 @@ export default function PetDashboardScreen() {
   const defaultAvatar = isBase64Valid ? petInfo.image_url : 'https://cdn-icons-png.flaticon.com/512/8204/8204652.png';
 
   const calculateAge = (dobString: string) => {
-    if (!dobString || dobString === 'undefined' || dobString === 'null') return 'Chưa rõ tuổi';
+    if (!dobString || dobString === 'undefined' || dobString === 'null') return 'Unknown Age';
     const birthDate = new Date(dobString);
-    if (isNaN(birthDate.getTime())) return 'Chưa rõ tuổi';
+    if (isNaN(birthDate.getTime())) return 'Unknown Age';
 
     const diffMs = Date.now() - birthDate.getTime();
     const ageDt = new Date(diffMs); 
     const years = Math.abs(ageDt.getUTCFullYear() - 1970);
     const months = ageDt.getUTCMonth();
 
-    if (years > 0) return `${years} tuổi`;
-    if (months > 0) return `${months} tháng tuổi`;
-    return 'Dưới 1 tháng tuổi';
+    if (years > 0) return `${years} years old`;
+    if (months > 0) return `${months} months old`;
+    return 'Under 1 month';
   };
-  // --- BỘ NHỚ TẠM ĐỂ CHỨA DỮ LIỆU MỚI NHẤT ---
+
   const latestData = useRef({ heartRate: 0, temperature: 0, behaviorCode: 0 });
 
-  // Mỗi khi BLE nhận số mới, cập nhật ngay vào bộ nhớ tạm
   useEffect(() => {
     latestData.current = {
       heartRate: typeof heartRate === 'number' ? heartRate : 0,
@@ -96,24 +98,16 @@ export default function PetDashboardScreen() {
     };
   }, [heartRate, temperature, behaviorCode]);
 
-  // --- HỆ THỐNG ĐỒNG BỘ LÊN SERVER (Cứ 10s chạy 1 lần) ---
   useEffect(() => {
     const forwardDataToServer = async () => {
       const { heartRate, temperature, behaviorCode } = latestData.current;
       
-      // 1. IN RA ĐỂ XEM APP CÓ ĐANG CỐ GẮNG CHẠY HÀM NÀY KHÔNG
-      console.log(`[DEBUG 10s] Đang kiểm tra dữ liệu - Nhịp tim: ${heartRate}, Nhiệt độ: ${temperature}`);
-
-      // Chỉ gửi khi đã có dữ liệu thực (lớn hơn 0)
+      // Không gửi nếu nhịp tim = 0 (khắc phục lỗi spam cảnh báo)
       if (heartRate > 0 && temperature > 0) {
         try {
           const token = await AsyncStorage.getItem('userToken');
-          if (!token) {
-            console.log("❌ [LỖI APP] Không tìm thấy thẻ căn cước (Token) để gửi lên Server!");
-            return;
-          }
+          if (!token) return;
 
-          // Thay bằng link Render thật của bạn nếu tên nó khác
           const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/health-logs'; 
           
           const payload = {
@@ -124,52 +118,31 @@ export default function PetDashboardScreen() {
             humidity: 60
           };
 
-          console.log("🚀 [ĐANG GỬI] Đang bắn dữ liệu lên Server:", payload);
-
-          const response = await axios.post(SERVER_URL, payload, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          
-          console.log(`✅ [THÀNH CÔNG] Đã lưu vào Server:`, response.data);
-
+          await axios.post(SERVER_URL, payload, { headers: { Authorization: `Bearer ${token}` } });
         } catch (error: any) {
-          // In ra chi tiết lỗi cụ thể từ Server báo về
-          console.log("❌ [LỖI SERVER TỪ CHỐI]:", error.response?.data || error.message);
+          console.log("Sync error:", error.message);
         }
-      } else {
-        console.log("⚠️ [BỎ QUA] Không gửi vì Nhiệt độ hoặc Nhịp tim đang bằng 0 hoặc bị lỗi định dạng (NaN).");
       }
     };
 
-    // Cài đặt đồng hồ: Cứ 10000ms (10 giây) thì gọi hàm forward 1 lần
     const syncInterval = setInterval(forwardDataToServer, 10000);
-
     return () => clearInterval(syncInterval);
   }, [petId]);
+
   useEffect(() => {
     let socket: any;
 
     const fetchHistoryAndSetupSocket = async () => {
-      // 1. Tải lịch sử dữ liệu (10 lần gần nhất)
       try {
         const token = await AsyncStorage.getItem('userToken');
-        const historyResponse = await axios.get(`https://pet-collar-backend.onrender.com/api/pets/${petId}/health-logs`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const historyResponse = await axios.get(`https://pet-collar-backend.onrender.com/api/pets/${petId}/health-logs`, { headers: { Authorization: `Bearer ${token}` } });
         if (historyResponse.data.status === 'success') {
           setHistoryLogs(historyResponse.data.data);
         }
-      } catch (error) {
-        console.log("Lỗi tải lịch sử:", error);
-      }
+      } catch (error) {}
 
-      // 2. Xin quyền thông báo
       const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Quyền thông báo', 'Hãy bật thông báo để nhận cảnh báo sức khỏe!');
-      }
-
-      // 3. Khởi tạo Socket
+      
       const userInfoString = await AsyncStorage.getItem('userInfo');
       if (userInfoString) {
         const user = JSON.parse(userInfoString);
@@ -177,7 +150,6 @@ export default function PetDashboardScreen() {
 
         socket = io('https://pet-collar-backend.onrender.com'); 
 
-        // Nghe cảnh báo khẩn cấp
         socket.on(`new_alert_user_${userId}`, (alertData: any) => {
           Notifications.scheduleNotificationAsync({
             content: { title: alertData.title, body: alertData.message, sound: true },
@@ -185,11 +157,9 @@ export default function PetDashboardScreen() {
           });
         });
 
-        // 📡 NGHE DỮ LIỆU SỨC KHỎE TỪ ĐIỆN THOẠI 1 BẮN LÊN (VAI TRÒ NGƯỜI QUAN SÁT)
         socket.on(`new_health_data_${petId}`, (newData: any) => {
-          // Nếu ĐT này đang KHÔNG kết nối BLE, thì lấy số từ Server đắp vào giao diện luôn
           setConnectionStatus((currentStatus) => {
-            if (currentStatus !== 'Đã kết nối') {
+            if (currentStatus !== 'Connected') {
               setHeartRate(newData.heart_rate);
               setTemperature(newData.temp_celsius);
               setBehaviorCode(newData.behavior_code);
@@ -197,36 +167,38 @@ export default function PetDashboardScreen() {
             return currentStatus;
           });
 
-          // Cập nhật biểu đồ (thêm điểm mới vào mảng, giữ tối đa 10 điểm)
           setHistoryLogs((prev) => {
             const updated = [newData, ...prev];
-            return updated.slice(0, 6); 
+            return updated.slice(0, 6); // Tuân thủ Ledger: Chỉ hiển thị 6 điểm gần nhất
           });
         });
       }
     };
 
     fetchHistoryAndSetupSocket();
-
-    return () => {
-      if (socket) socket.disconnect();
-    };
+    return () => { if (socket) socket.disconnect(); };
   }, [petId]);
+
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
-      connectToESP32();
+      handleConnect(); // Tự động kết nối khi vào trang
     });
     return () => {
       task.cancel();
-      if (mac) bleManager.cancelDeviceConnection(mac).catch(() => {});
+      // Không tự động ngắt kết nối khi back ra nữa để giữ background
     };
   }, [mac]);
-  const connectToESP32 = async () => {
+
+  // HÀM CHỦ ĐỘNG KẾT NỐI
+  const handleConnect = async () => {
     if (!mac) return;
+    setConnectionStatus('Connecting...');
+    setIsConnected(false);
     try {
       const device = await bleManager.connectToDevice(mac);
       await device.discoverAllServicesAndCharacteristics();
-      setConnectionStatus('Đã kết nối');
+      setConnectionStatus('Connected');
+      setIsConnected(true);
 
       device.monitorCharacteristicForService(SERVICE_UUID, HEARTRATE_CHAR_UUID, (error, char) => {
         if (char?.value) setHeartRate(atob(char.value).charCodeAt(0));
@@ -237,21 +209,34 @@ export default function PetDashboardScreen() {
       device.monitorCharacteristicForService(SERVICE_UUID, BEHAVIOR_CHAR_UUID, (error, char) => {
         if (char?.value) setBehaviorCode(atob(char.value).charCodeAt(0));
       });
+
+      bleManager.onDeviceDisconnected(mac, () => {
+        setConnectionStatus('Disconnected');
+        setIsConnected(false);
+        setHeartRate('--');
+        setTemperature('--');
+      });
     } catch (error) {
-      setConnectionStatus('Ngắt kết nối');
+      setConnectionStatus('Disconnected');
+      setIsConnected(false);
     }
   };
 
-  // --- HÀM CHỌN ẢNH ---
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+  // HÀM CHỦ ĐỘNG NGẮT KẾT NỐI
+  const handleDisconnect = async () => {
+    try {
+      await bleManager.cancelDeviceConnection(mac);
+      setConnectionStatus('Disconnected');
+      setIsConnected(false);
+      setHeartRate('--');
+      setTemperature('--');
+    } catch (error) {
+      console.log("Disconnect error", error);
+    }
+  };
 
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setEditImageUri(result.assets[0].uri);
       setEditImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
@@ -263,18 +248,13 @@ export default function PetDashboardScreen() {
     setEditGender(petInfo.gender && petInfo.gender !== 'undefined' ? petInfo.gender : '');
     setEditWeight(petInfo.weight && petInfo.weight !== 'undefined' && petInfo.weight !== 'null' ? petInfo.weight : '');
     setEditDob(petInfo.dob && petInfo.dob !== 'undefined' && petInfo.dob !== 'null' ? new Date(petInfo.dob) : null);
-    
-    // Tải sẵn ảnh cũ lên Modal
     setEditImageUri(isBase64Valid ? petInfo.image_url : null);
-    setEditImageBase64(null); // Chỉ gửi base64 mới nếu người dùng thực sự chọn ảnh mới
-    
+    setEditImageBase64(null); 
     setShowEditModal(true);
   };
 
   const handleUpdatePet = async () => {
-    if (!editName) {
-      Alert.alert("Lỗi", "Tên không được để trống!"); return;
-    }
+    if (!editName) { Alert.alert("Error", "Name cannot be empty!"); return; }
     try {
       const token = await AsyncStorage.getItem('userToken');
       const SERVER_URL = `https://pet-collar-backend.onrender.com/api/pets/${petId}`;
@@ -284,34 +264,25 @@ export default function PetDashboardScreen() {
         gender: editGender || null, 
         dob: editDob ? editDob.toISOString().split('T')[0] : null, 
         weight: editWeight ? parseFloat(editWeight) : null,
-        image_url: editImageBase64 || null // Nếu có ảnh mới thì gửi, không thì gửi null để backend giữ ảnh cũ
+        image_url: editImageBase64 || null 
       };
 
       const response = await axios.put(SERVER_URL, payload, { headers: { Authorization: `Bearer ${token}` } });
       
       if (response.data.status === 'success') {
-        Alert.alert("Thành công", "Đã cập nhật hồ sơ!");
+        Alert.alert("Success", "Profile updated!");
         setShowEditModal(false);
-        setPetInfo({
-          ...petInfo,
-          name: payload.name,
-          gender: payload.gender ?? '',
-          dob: payload.dob ?? '',
-          weight: payload.weight !== null && payload.weight !== undefined ? String(payload.weight) : '',
-          // Nếu có ảnh mới thì cập nhật giao diện ngay lập tức
-          image_url: editImageBase64 || petInfo.image_url
-        });
+        setPetInfo({ ...petInfo, name: payload.name, gender: payload.gender ?? '', dob: payload.dob ?? '', weight: payload.weight !== null && payload.weight !== undefined ? String(payload.weight) : '', image_url: editImageBase64 || petInfo.image_url });
       }
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể cập nhật. Vui lòng thử lại!");
+      Alert.alert("Error", "Failed to update profile.");
     }
   };
 
-  const currentBehaviorText = BEHAVIOR_LABELS[behaviorCode] || "Đang phân tích...";
+  const currentBehaviorText = BEHAVIOR_LABELS[behaviorCode] || "Analyzing...";
   const petAge = calculateAge(petInfo.dob);
 
   return (
-    // Bọc SafeAreaView màu Vàng và StatusBar
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FDCB58' }}>
       <StatusBar backgroundColor="#FDCB58" barStyle="dark-content" />
 
@@ -322,55 +293,64 @@ export default function PetDashboardScreen() {
         <Modal visible={showEditModal} transparent={true} animationType="fade">
           <View style={styles.modalContainer}>
             <View style={[styles.modalContent, { maxHeight: '85%' }]}>
-              {/* Thêm ScrollView để không bị lỗi che bàn phím */}
               <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalTitle}>Chỉnh sửa Hồ sơ</Text>
+                <Text style={styles.modalTitle}>Edit Profile</Text>
                 
-                {/* --- KHU VỰC ĐỔI ẢNH --- */}
                 <TouchableOpacity style={styles.imagePickerContainer} onPress={pickImage}>
                   {editImageUri ? (
                     <Image source={{ uri: editImageUri }} style={styles.pickedImage} />
                   ) : (
                     <View style={styles.imagePlaceholder}>
                       <Ionicons name="camera-outline" size={32} color="#8D6E63" />
-                      <Text style={styles.imagePlaceholderText}>Đổi ảnh</Text>
+                      <Text style={styles.imagePlaceholderText}>Change Photo</Text>
                     </View>
                   )}
                 </TouchableOpacity>
 
                 <View style={styles.inputWrapper}>
-                  <TextInput style={styles.input} placeholderTextColor="#888" placeholder="Tên bé cưng" value={editName} onChangeText={setEditName} />
+                  <TextInput style={styles.input} placeholderTextColor="#888" placeholder="Pet Name" value={editName} onChangeText={setEditName} />
                 </View>
 
+                {/* KHU VỰC ĐỔI NÚT CHỌN GIỚI TÍNH CÓ MÀU XANH HỒNG */}
                 <View style={styles.genderRow}>
-                  <TouchableOpacity onPress={() => setEditGender(editGender === 'Male' ? '' : 'Male')} style={[styles.genderBtn, editGender === 'Male' && styles.genderBtnActive]}>
-                    <Text style={[styles.genderText, editGender === 'Male' && styles.genderTextActive]}>Đực</Text>
+                  <TouchableOpacity 
+                    onPress={() => setEditGender(editGender === 'Male' ? '' : 'Male')} 
+                    style={[
+                      styles.genderBtn, 
+                      editGender === 'Male' ? { backgroundColor: '#E3F2FD', borderColor: '#2196F3', borderWidth: 2 } : { backgroundColor: '#F5F5F5', borderWidth: 2, borderColor: 'transparent' }
+                    ]}
+                  >
+                    <Text style={[styles.genderText, { fontSize: 24 }, editGender === 'Male' ? { color: '#1976D2' } : { color: '#AAA' }]}>♂</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setEditGender(editGender === 'Female' ? '' : 'Female')} style={[styles.genderBtn, editGender === 'Female' && styles.genderBtnActive]}>
-                    <Text style={[styles.genderText, editGender === 'Female' && styles.genderTextActive]}>Cái</Text>
+                  
+                  <TouchableOpacity 
+                    onPress={() => setEditGender(editGender === 'Female' ? '' : 'Female')} 
+                    style={[
+                      styles.genderBtn, 
+                      editGender === 'Female' ? { backgroundColor: '#FCE4EC', borderColor: '#E91E63', borderWidth: 2 } : { backgroundColor: '#F5F5F5', borderWidth: 2, borderColor: 'transparent' }
+                    ]}
+                  >
+                    <Text style={[styles.genderText, { fontSize: 24 }, editGender === 'Female' ? { color: '#C2185B' } : { color: '#AAA' }]}>♀</Text>
                   </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowDatePicker(true)}>
                   <Text style={{ flex: 1, fontSize: 15, color: editDob ? '#333' : '#888', marginTop: 14 }}>
-                    {editDob ? editDob.toISOString().split('T')[0] : 'Ngày sinh (Tùy chọn)'}
+                    {editDob ? editDob.toISOString().split('T')[0] : 'Date of Birth (Optional)'}
                   </Text>
                 </TouchableOpacity>
 
                 {showDatePicker && (
-                  <DateTimePicker
-                    value={editDob || new Date()} mode="date" display="default" maximumDate={new Date()}
-                    onChange={(event, selectedDate) => { setShowDatePicker(false); if (selectedDate) setEditDob(selectedDate); }}
-                  />
+                  <DateTimePicker value={editDob || new Date()} mode="date" display="default" maximumDate={new Date()} onChange={(event, selectedDate) => { setShowDatePicker(false); if (selectedDate) setEditDob(selectedDate); }} />
                 )}
 
                 <View style={styles.inputWrapper}>
-                  <TextInput style={styles.input} placeholderTextColor="#888" placeholder="Cân nặng (kg)" keyboardType="numeric" value={editWeight} onChangeText={setEditWeight} />
+                  <TextInput style={styles.input} placeholderTextColor="#888" placeholder="Weight (kg)" keyboardType="numeric" value={editWeight} onChangeText={setEditWeight} />
                 </View>
 
                 <View style={styles.modalActionRow}>
-                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEditModal(false)}><Text style={styles.cancelBtnText}>Hủy</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.saveBtn} onPress={handleUpdatePet}><Text style={styles.saveBtnText}>Lưu</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowEditModal(false)}><Text style={styles.cancelBtnText}>Cancel</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.saveBtn} onPress={handleUpdatePet}><Text style={styles.saveBtnText}>Save</Text></TouchableOpacity>
                 </View>
               </ScrollView>
             </View>
@@ -379,14 +359,27 @@ export default function PetDashboardScreen() {
 
         {/* --- HEADER HÌNH ẢNH --- */}
         <ImageBackground source={{ uri: defaultAvatar }} style={styles.headerImage} imageStyle={{ resizeMode: 'cover' }}>
-          {/* SafeAreaView bên trong này có thể bỏ đi vì đã có cái bọc ngoài cùng rồi, nhưng giữ lại dạng View để padding */}
           <View style={{ paddingTop: 10 }}>
             <View style={styles.topBar}>
               <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={24} color="#333" /></TouchableOpacity>
-              <View style={styles.bleStatus}>
-                <View style={[styles.statusDot, { backgroundColor: connectionStatus === 'Đã kết nối' ? '#4CAF50' : '#FF5252' }]} />
+              {/* Nút bấm trạng thái góc trên bên phải */}
+              <TouchableOpacity 
+                style={styles.bleStatus} 
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (isConnected) {
+                    Alert.alert("Disconnect", `Do you want to disconnect ${petInfo.name}'s collar?`, [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Disconnect", onPress: handleDisconnect, style: "destructive" }
+                    ]);
+                  } else {
+                    handleConnect();
+                  }
+                }}
+              >
+                <View style={[styles.statusDot, { backgroundColor: isConnected ? '#4CAF50' : '#FF5252' }]} />
                 <Text style={styles.bleText}>{connectionStatus}</Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </ImageBackground>
@@ -400,43 +393,52 @@ export default function PetDashboardScreen() {
             </View>
             <TouchableOpacity style={styles.editBtn} onPress={openEditModal}>
               <Ionicons name="pencil" size={16} color="#3E2723" />
-              <Text style={styles.editText}>Chỉnh sửa</Text>
+              <Text style={styles.editText}>Edit</Text>
             </TouchableOpacity>
           </View>
 
+          {/* HIỂN THỊ ICON GIỚI TÍNH */}
           <View style={styles.miniStatsRow}>
             <View style={styles.miniStatBox}>
-              <Text style={styles.miniStatEmoji}>🐾</Text>
-              <Text style={styles.miniStatLabel}>Giới tính</Text>
-              <Text style={styles.miniStatValue}>{petInfo.gender === 'Male' ? 'Đực' : petInfo.gender === 'Female' ? 'Cái' : '--'}</Text>
+              <Text style={styles.miniStatLabel}>Gender</Text>
+              <View style={[
+                  styles.genderCardBadge,
+                  petInfo.gender === 'Male' ? { backgroundColor: '#E3F2FD' } : petInfo.gender === 'Female' ? { backgroundColor: '#FCE4EC' } : { backgroundColor: '#E0E0E0' }
+                ]}>
+                <Text style={[
+                  styles.genderCardText,
+                  petInfo.gender === 'Male' ? { color: '#1976D2' } : petInfo.gender === 'Female' ? { color: '#C2185B' } : { color: '#666' }
+                ]}>
+                  {petInfo.gender === 'Male' ? '♂' : petInfo.gender === 'Female' ? '♀' : '--'}
+                </Text>
+              </View>
             </View>
+            
             <View style={styles.miniStatBox}>
-              <Text style={styles.miniStatEmoji}>⚖️</Text>
-              <Text style={styles.miniStatLabel}>Cân nặng</Text>
+              <Text style={styles.miniStatLabel}>Weight</Text>
               <Text style={styles.miniStatValue}>{petInfo.weight && petInfo.weight !== 'null' && petInfo.weight !== 'undefined' ? `${petInfo.weight} kg` : '--'}</Text>
             </View>
           </View>
-
           <View style={styles.healthRow}>
             <View style={styles.healthCard}>
               <Ionicons name="heart" size={38} color="#E53935" />
               <Text style={styles.cardValue}>{heartRate} <Text style={styles.cardUnit}>bpm</Text></Text>
-              <Text style={styles.cardTitle}>Nhịp tim</Text>
+              <Text style={styles.cardTitle}>Heart Rate</Text>
             </View>
 
             <View style={styles.healthCard}>
               <Ionicons name="thermometer" size={38} color="#FF9800" />
               <Text style={[styles.cardValue, { color: '#FF9800' }]}>{temperature} <Text style={styles.cardUnit}>°C</Text></Text>
-              <Text style={styles.cardTitle}>Nhiệt độ</Text>
+              <Text style={styles.cardTitle}>Temperature</Text>
             </View>
           </View>
           <View style={styles.chartCard}>
             <View style={styles.chartTabs}>
               <TouchableOpacity style={[styles.chartTabBtn, activeTab === 'HR' && styles.chartTabBtnActive]} onPress={() => setActiveTab('HR')}>
-                <Text style={[styles.chartTabBtnText, activeTab === 'HR' && styles.chartTabBtnTextActive]}>Nhịp tim</Text>
+                <Text style={[styles.chartTabBtnText, activeTab === 'HR' && styles.chartTabBtnTextActive]}>Heart Rate</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.chartTabBtn, activeTab === 'TEMP' && styles.chartTabBtnActive]} onPress={() => setActiveTab('TEMP')}>
-                <Text style={[styles.chartTabBtnText, activeTab === 'TEMP' && styles.chartTabBtnTextActive]}>Nhiệt độ</Text>
+                <Text style={[styles.chartTabBtnText, activeTab === 'TEMP' && styles.chartTabBtnTextActive]}>Temperature</Text>
               </TouchableOpacity>
             </View>
 
@@ -470,18 +472,18 @@ export default function PetDashboardScreen() {
                 style={{ borderRadius: 16, marginTop: 15 }}
               />
             ) : (
-              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40, marginBottom: 40 }}>Chưa có dữ liệu lịch sử</Text>
+              <Text style={{ textAlign: 'center', color: '#888', marginTop: 40, marginBottom: 40 }}>No historical data</Text>
             )}
           </View>
-          {/* ========================================================== */}
+          
           <View style={styles.behaviorSection}>
-            <Text style={styles.sectionTitle}>Hoạt động hiện tại</Text>
+            <Text style={styles.sectionTitle}>Current Activity</Text>
             <View style={styles.behaviorBox}>
               <View style={styles.aiIconContainer}>
                 <Ionicons name="hardware-chip" size={32} color="#3E2723" />
               </View>
               <View style={styles.behaviorInfo}>
-                <Text style={styles.behaviorLabel}>Trạng thái AI ESP32:</Text>
+                <Text style={styles.behaviorLabel}>ESP32 AI Status:</Text>
                 <Text style={styles.behaviorName}>{currentBehaviorText}</Text>
               </View>
             </View>
@@ -494,7 +496,15 @@ export default function PetDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  // --- STYLE BIỂU ĐỒ ---
+  // Nút Kết nối / Ngắt kết nối
+  connectBtn: { flexDirection: 'row', backgroundColor: '#4CAF50', paddingVertical: 12, borderRadius: 15, justifyContent: 'center', alignItems: 'center', elevation: 2 },
+  disconnectBtn: { flexDirection: 'row', backgroundColor: '#E53935', paddingVertical: 12, borderRadius: 15, justifyContent: 'center', alignItems: 'center', elevation: 2 },
+  btnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+
+  // Huy hiệu giới tính
+  genderCardBadge: { paddingHorizontal: 15, paddingVertical: 4, borderRadius: 15, justifyContent: 'center', alignItems: 'center', elevation: 1 },
+  genderCardText: { fontSize: 18, fontWeight: 'bold' },
+
   chartCard: { backgroundColor: '#FFF', borderRadius: 25, padding: 20, marginTop: 25, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, borderWidth: 1, borderColor: '#F5F5F5' },
   chartTabs: { flexDirection: 'row', backgroundColor: '#F5F5F5', borderRadius: 20, padding: 5 },
   chartTabBtn: { flex: 1, paddingVertical: 10, borderRadius: 15, alignItems: 'center' },
@@ -519,11 +529,10 @@ const styles = StyleSheet.create({
   editBtn: { flexDirection: 'row', backgroundColor: '#FDCB58', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 20, alignItems: 'center', elevation: 2 },
   editText: { color: '#3E2723', fontWeight: 'bold', marginLeft: 5, fontSize: 13 },
 
-  miniStatsRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: 40, marginTop: 25, marginBottom: 25, paddingHorizontal: 5 },
-  miniStatBox: { alignItems: 'center' },
-  miniStatEmoji: { fontSize: 24, marginBottom: 5 },
-  miniStatLabel: { fontSize: 12, color: '#888', marginBottom: 2 },
-  miniStatValue: { fontSize: 16, fontWeight: 'bold', color: '#3E2723' },
+  miniStatsRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: 40, marginTop: 15, marginBottom: 20, paddingHorizontal: 5 },
+  miniStatBox: { alignItems: 'flex-start' },
+  miniStatLabel: { fontSize: 13, color: '#888', marginBottom: 6 },
+  miniStatValue: { fontSize: 18, fontWeight: 'bold', color: '#3E2723' },
 
   healthRow: { flexDirection: 'row', justifyContent: 'space-between' },
   healthCard: { width: '47%', borderRadius: 25, padding: 20, height: 160, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, borderWidth: 1, borderColor: '#F5F5F5' },
