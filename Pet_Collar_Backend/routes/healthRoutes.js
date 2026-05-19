@@ -63,11 +63,11 @@ router.post('/', authenticateToken, async (req, res) => {
             // Chống spam 30 phút
             const checkSpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = '⚠️ Collar Detached' AND created_at >= NOW() - INTERVAL '30 minutes'`;
             const spamResult = await pool.query(checkSpamQuery, [pet_id]);
-            
+            let alertObj = null;
             if (parseInt(spamResult.rows[0].count) === 0) {
                 const alertTitle = "⚠️ Collar Detached";
                 const alertMessage = "The sensor is not detecting skin contact. Please check if the collar is loose or has fallen off.";
-                
+                alertObj = { title: alertTitle, message: alertMessage };
                 const ownersResult = await pool.query(`SELECT user_id FROM user_pets WHERE pet_id = $1`, [pet_id]);
                 const notifications = await Promise.all(ownersResult.rows.map(async (owner) => {
                     const notiResult = await pool.query(
@@ -86,7 +86,8 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(201).json({ 
                 status: "success", 
                 message: "Collar detached. AI Alert bypassed.",
-                data: result.rows[0] 
+                data: result.rows[0], 
+                alert: alertObj
             });
         }
 
@@ -103,7 +104,7 @@ router.post('/', authenticateToken, async (req, res) => {
         });
 
         console.log(`🤖 [AI PREDICTION] Thú cưng ID ${pet_id} có mức độ rủi ro là: ${alertLevel}`);
-
+        let alertObj = null;
         if (alertLevel === 1 || alertLevel === 2) {
             const alertTitle = alertLevel === 1 ? "⚠️ Health Alert (Warning)" : "🚨 Emergency Alert (Danger)!";
             const alertMessage = alertLevel === 1 
@@ -115,6 +116,7 @@ router.post('/', authenticateToken, async (req, res) => {
             const aiSpamResult = await pool.query(checkAISpamQuery, [pet_id, alertTitle]);
 
             if (parseInt(aiSpamResult.rows[0].count) === 0) {
+                alertObj = { title: alertTitle, message: alertMessage };
                 const ownersResult = await pool.query(`SELECT user_id FROM user_pets WHERE pet_id = $1`, [pet_id]);
                 const notifications = await Promise.all(ownersResult.rows.map(async (owner) => {
                     const notiResult = await pool.query(
@@ -130,7 +132,7 @@ router.post('/', authenticateToken, async (req, res) => {
             }
         }
 
-        res.status(201).json({ status: "success", data: result.rows[0] });
+        res.status(201).json({ status: "success", data: result.rows[0], alert: alertObj });
     } catch (error) {
         console.error('❌ Lỗi xử lý API Health Logs:', error); 
         res.status(500).json({ status: "error", message: "Lỗi máy chủ nội bộ" });

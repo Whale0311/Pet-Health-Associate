@@ -483,7 +483,7 @@ export default function PetDashboardScreen() {
                 <Ionicons name="hardware-chip" size={32} color="#3E2723" />
               </View>
               <View style={styles.behaviorInfo}>
-                <Text style={styles.behaviorLabel}>ESP32 AI Status:</Text>
+                <Text style={styles.behaviorLabel}>Behavior:</Text>
                 <Text style={styles.behaviorName}>{currentBehaviorText}</Text>
               </View>
             </View>
