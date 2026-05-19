@@ -51,7 +51,7 @@ export default function PetDashboardScreen() {
   });
 
   const [connectionStatus, setConnectionStatus] = useState<string>('Connecting...');
-  const [isConnected, setIsConnected] = useState(false); // Thêm state kiểm soát kết nối thực sự
+  const [isConnected, setIsConnected] = useState(false);
   const [heartRate, setHeartRate] = useState<number | string>('--');
   const [temperature, setTemperature] = useState<string>('--');
   const [behaviorCode, setBehaviorCode] = useState<number>(0); 
@@ -88,47 +88,60 @@ export default function PetDashboardScreen() {
     return 'Under 1 month';
   };
 
-  const latestData = useRef({ heartRate: 0, temperature: 0, behaviorCode: 0 });
+  // ===================================================================
+  // 🧠 BỘ NÃO CHẠY NGẦM (BACKGROUND SYNC)
+  // ===================================================================
+  const bleDataRef = useRef({ hr: 0, temp: 0, behavior: 0 });
+  const lastSyncTime = useRef(0);
 
-  useEffect(() => {
-    latestData.current = {
-      heartRate: typeof heartRate === 'number' ? heartRate : 0,
-      temperature: parseFloat(temperature) || 0,
-      behaviorCode: behaviorCode
-    };
-  }, [heartRate, temperature, behaviorCode]);
-
-  useEffect(() => {
-    const forwardDataToServer = async () => {
-      const { heartRate, temperature, behaviorCode } = latestData.current;
+  const processBackgroundSync = async () => {
+    const now = Date.now();
+    
+    // Chỉ gửi dữ liệu lên Server nếu đã trôi qua ít nhất 10 giây
+    if (now - lastSyncTime.current >= 10000) {
+      const { hr, temp, behavior } = bleDataRef.current;
       
-      // Không gửi nếu nhịp tim = 0 (khắc phục lỗi spam cảnh báo)
-      if (heartRate > 0 && temperature > 0) {
+      // Khắc phục lỗi spam cảnh báo khi nhịp tim = 0 (tuột vòng)
+      if (hr > 0 && temp > 0) {
+        lastSyncTime.current = now; // Khóa bộ đếm thời gian
+        
         try {
           const token = await AsyncStorage.getItem('userToken');
           if (!token) return;
 
-          const SERVER_URL = 'https://pet-collar-backend.onrender.com/api/health-logs'; 
-          
-          const payload = {
-            pet_id: petId,
-            behavior_code: behaviorCode,
-            heart_rate: heartRate,
-            temp_celsius: temperature,
-            humidity: 60
+          const payload = { 
+            pet_id: petId, 
+            behavior_code: behavior, 
+            heart_rate: hr, 
+            temp_celsius: temp, 
+            humidity: 60 
           };
+          
+          const response = await axios.post('https://pet-collar-backend.onrender.com/api/health-logs', payload, { 
+            headers: { Authorization: `Bearer ${token}` } 
+          });
 
-          await axios.post(SERVER_URL, payload, { headers: { Authorization: `Bearer ${token}` } });
-        } catch (error: any) {
-          console.log("Sync error:", error.message);
+          // NẾU BACKEND TRẢ VỀ CẢNH BÁO -> BẮN THÔNG BÁO LOCAL TẠI CHỖ
+          if (response.data.alert) {
+            Notifications.scheduleNotificationAsync({
+              content: { 
+                title: response.data.alert.title, 
+                body: response.data.alert.message, 
+                sound: true 
+              },
+              trigger: null,
+            });
+          }
+        } catch (error) {
+          console.log("Background sync error:", error);
         }
       }
-    };
+    }
+  };
 
-    const syncInterval = setInterval(forwardDataToServer, 10000);
-    return () => clearInterval(syncInterval);
-  }, [petId]);
-
+  // ===================================================================
+  // THIẾT LẬP LỊCH SỬ & SOCKET
+  // ===================================================================
   useEffect(() => {
     let socket: any;
 
@@ -169,7 +182,7 @@ export default function PetDashboardScreen() {
 
           setHistoryLogs((prev) => {
             const updated = [newData, ...prev];
-            return updated.slice(0, 6); // Tuân thủ Ledger: Chỉ hiển thị 6 điểm gần nhất
+            return updated.slice(0, 6);
           });
         });
       }
@@ -181,15 +194,16 @@ export default function PetDashboardScreen() {
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
-      handleConnect(); // Tự động kết nối khi vào trang
+      handleConnect();
     });
     return () => {
       task.cancel();
-      // Không tự động ngắt kết nối khi back ra nữa để giữ background
     };
   }, [mac]);
 
-  // HÀM CHỦ ĐỘNG KẾT NỐI
+  // ===================================================================
+  // KẾT NỐI BLE VÀ KÍCH HOẠT PHẢN XẠ CHẠY NGẦM
+  // ===================================================================
   const handleConnect = async () => {
     if (!mac) return;
     setConnectionStatus('Connecting...');
@@ -201,13 +215,28 @@ export default function PetDashboardScreen() {
       setIsConnected(true);
 
       device.monitorCharacteristicForService(SERVICE_UUID, HEARTRATE_CHAR_UUID, (error, char) => {
-        if (char?.value) setHeartRate(atob(char.value).charCodeAt(0));
+        if (char?.value) {
+          const val = atob(char.value).charCodeAt(0);
+          setHeartRate(val);
+          bleDataRef.current.hr = val;
+          processBackgroundSync(); // Kích hoạt luồng phản xạ
+        }
       });
       device.monitorCharacteristicForService(SERVICE_UUID, TEMPERATURE_CHAR_UUID, (error, char) => {
-        if (char?.value) setTemperature(atob(char.value));
+        if (char?.value) {
+          const val = parseFloat(atob(char.value));
+          setTemperature(val.toString());
+          bleDataRef.current.temp = val;
+          processBackgroundSync(); // Kích hoạt luồng phản xạ
+        }
       });
       device.monitorCharacteristicForService(SERVICE_UUID, BEHAVIOR_CHAR_UUID, (error, char) => {
-        if (char?.value) setBehaviorCode(atob(char.value).charCodeAt(0));
+        if (char?.value) {
+          const val = atob(char.value).charCodeAt(0);
+          setBehaviorCode(val);
+          bleDataRef.current.behavior = val;
+          processBackgroundSync(); // Kích hoạt luồng phản xạ
+        }
       });
 
       bleManager.onDeviceDisconnected(mac, () => {
@@ -222,7 +251,6 @@ export default function PetDashboardScreen() {
     }
   };
 
-  // HÀM CHỦ ĐỘNG NGẮT KẾT NỐI
   const handleDisconnect = async () => {
     try {
       await bleManager.cancelDeviceConnection(mac);
@@ -362,7 +390,6 @@ export default function PetDashboardScreen() {
           <View style={{ paddingTop: 10 }}>
             <View style={styles.topBar}>
               <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={24} color="#333" /></TouchableOpacity>
-              {/* Nút bấm trạng thái góc trên bên phải */}
               <TouchableOpacity 
                 style={styles.bleStatus} 
                 activeOpacity={0.8}

@@ -60,8 +60,8 @@ router.post('/', authenticateToken, async (req, res) => {
         if (heart_rate < 40 || temp_celsius < 32) {
             console.log(`⚠️ [SENSOR DETACHED] Thú cưng ID ${pet_id} có thể đã tháo vòng cổ.`);
             
-            // Chống spam 30 phút
-            const checkSpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = '⚠️ Collar Detached' AND created_at >= NOW() - INTERVAL '30 minutes'`;
+            // 🛠️ ĐÃ SỬA: Chống spam 10 giây cho chế độ Test
+            const checkSpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = '⚠️ Collar Detached' AND created_at >= NOW() - INTERVAL '10 seconds'`;
             const spamResult = await pool.query(checkSpamQuery, [pet_id]);
             let alertObj = null;
             if (parseInt(spamResult.rows[0].count) === 0) {
@@ -111,8 +111,8 @@ router.post('/', authenticateToken, async (req, res) => {
                 ? `Abnormal health signs detected. Heart Rate: ${heart_rate} bpm, Temp: ${temp_celsius}°C. Please check your pet.` 
                 : `Critical health status detected! Heart Rate: ${heart_rate} bpm, Temp: ${temp_celsius}°C. Inspect immediately!`;
 
-            // THUẬT TOÁN CHỐNG SPAM AI (10 Phút / lần) để tránh sập Socket
-            const checkAISpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = $2 AND created_at >= NOW() - INTERVAL '10 minutes'`;
+            // 🛠️ ĐÃ SỬA: Chống spam AI 10 giây cho chế độ Test
+            const checkAISpamQuery = `SELECT COUNT(*) FROM notifications WHERE pet_id = $1 AND title = $2 AND created_at >= NOW() - INTERVAL '10 seconds'`;
             const aiSpamResult = await pool.query(checkAISpamQuery, [pet_id, alertTitle]);
 
             if (parseInt(aiSpamResult.rows[0].count) === 0) {
