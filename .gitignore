@@ -15,3 +15,4 @@ node_modules/
 
 # 5. Bỏ qua các biến môi trường nếu có lỡ tạo ở ngoài
 .env
+generate_data.js

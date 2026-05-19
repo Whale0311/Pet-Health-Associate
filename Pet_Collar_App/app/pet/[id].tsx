@@ -6,13 +6,20 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Image, ImageBackground, InteractionManager, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ImageBackground, InteractionManager, Modal, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking } from 'react-native';
 import { BleManager } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Dimensions } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 import io from 'socket.io-client';
+import * as TaskManager from 'expo-task-manager';
+import * as Location from 'expo-location';
 
+const BACKGROUND_BLE_TASK = 'BACKGROUND_BLE_TASK';
+
+TaskManager.defineTask(BACKGROUND_BLE_TASK, async () => {
+  // Lõi JS sẽ được hệ điều hành giữ cho thức tỉnh nhờ Task này
+});
 const bleManager = new BleManager();
 
 const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
@@ -202,14 +209,70 @@ export default function PetDashboardScreen() {
   }, [mac]);
 
   // ===================================================================
-  // KẾT NỐI BLE VÀ KÍCH HOẠT PHẢN XẠ CHẠY NGẦM
+  // 🛡️ XỬ LÝ QUYỀN CHẠY NGẦM (Tách lớp cho Android 11+)
+  // ===================================================================
+  const requestBackgroundService = async () => {
+    try {
+      // BƯỚC 1: Xin quyền Foreground trước
+      const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+      if (fgStatus !== 'granted') {
+        Alert.alert("Lưu ý", "Ứng dụng cần quyền vị trí để duy trì Bluetooth.");
+        return;
+      }
+
+      // BƯỚC 2: Xin quyền Background sau (Android mới hiện tùy chọn 'Allow all the time')
+      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+      if (bgStatus !== 'granted') {
+        Alert.alert(
+          "Cần cấp quyền thủ công", 
+          "Để nhận cảnh báo khi tắt màn hình, hãy vào Cài đặt -> Vị trí -> Chọn 'Luôn cho phép'.",
+          [
+            { text: "Bỏ qua", style: "cancel" },
+            { text: "Mở Cài đặt", onPress: () => Linking.openSettings() }
+          ]
+        );
+        return;
+      }
+
+      // BƯỚC 3: Kích hoạt dịch vụ tiền cảnh
+      await Location.startLocationUpdatesAsync(BACKGROUND_BLE_TASK, {
+        accuracy: Location.Accuracy.Low,
+        showsBackgroundLocationIndicator: false,
+        foregroundService: {
+          notificationTitle: 'Pet Smart Collar',
+          notificationBody: 'Đang theo dõi sức khỏe thú cưng...',
+          notificationColor: '#FDCB58',
+        },
+      });
+    } catch (err) {
+      console.log("Background Task Error:", err);
+    }
+  };
+
+  // ===================================================================
+  // 🚀 KẾT NỐI BLE (Sửa lỗi xung đột khi chuyển trang)
   // ===================================================================
   const handleConnect = async () => {
     if (!mac) return;
     setConnectionStatus('Connecting...');
     setIsConnected(false);
+    
     try {
-      const device = await bleManager.connectToDevice(mac);
+      // Khởi động Background Service song song
+      requestBackgroundService();
+
+      let device;
+      const isAlreadyConnected = await bleManager.isDeviceConnected(mac);
+
+      if (isAlreadyConnected) {
+        // Tái sử dụng kết nối từ trang Home (Tránh lỗi Disconnected ảo)
+        const connectedDevices = await bleManager.connectedDevices([SERVICE_UUID]);
+        device = connectedDevices.find(d => d.id === mac);
+        if (!device) device = await bleManager.connectToDevice(mac);
+      } else {
+        device = await bleManager.connectToDevice(mac);
+      }
+
       await device.discoverAllServicesAndCharacteristics();
       setConnectionStatus('Connected');
       setIsConnected(true);
@@ -246,6 +309,7 @@ export default function PetDashboardScreen() {
         setTemperature('--');
       });
     } catch (error) {
+      console.log("Connect Error:", error);
       setConnectionStatus('Disconnected');
       setIsConnected(false);
     }
@@ -254,6 +318,12 @@ export default function PetDashboardScreen() {
   const handleDisconnect = async () => {
     try {
       await bleManager.cancelDeviceConnection(mac);
+      
+      const hasStarted = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_BLE_TASK);
+      if (hasStarted) {
+        await Location.stopLocationUpdatesAsync(BACKGROUND_BLE_TASK);
+      }
+
       setConnectionStatus('Disconnected');
       setIsConnected(false);
       setHeartRate('--');

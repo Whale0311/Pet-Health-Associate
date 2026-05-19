@@ -57,7 +57,7 @@ router.post('/', authenticateToken, async (req, res) => {
         // ==========================================
         // 4. BỘ LỌC CẢM BIẾN (Tuột vòng cổ)
         // ==========================================
-        if (heart_rate < 40 || temp_celsius < 32) {
+        if (heart_rate <= 40 || temp_celsius < 30) {
             console.log(`⚠️ [SENSOR DETACHED] Thú cưng ID ${pet_id} có thể đã tháo vòng cổ.`);
             
             // 🛠️ ĐÃ SỬA: Chống spam 10 giây cho chế độ Test
