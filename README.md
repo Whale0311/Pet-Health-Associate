@@ -140,17 +140,27 @@ npm start            # Chạy Expo dev server
 - Mô hình học máy được huấn luyện trên Edge Impulse
 - Phân loại hành vi từ dữ liệu gia tốc kế (MPU6050)
 - Suy luận trực tiếp trên thiết bị (Edge AI)
+- AI-powered Health Classification: Decision Tree model phân loại mức độ rủi ro sức khỏe ✨ NEW
+- Alert Levels: Level 0 (Bình thường), Level 1 (Cảnh báo ⚠️), Level 2 (Khẩn cấp 🚨) ✨ NEW
 
 ### 🔔 Alerts & Notifications
-- Cảnh báo nhịp tim bất thường (>140 bpm khi nằm)
-- Cảnh báo nhiệt độ cao (>39.5°C)
-- Cảnh báo nhịp tim tăng đột ngột (>160 bpm)
-- Push notifications thời gian thực
+- AI-powered Health Alerts: Cảnh báo thông minh dựa trên mô hình Decision Tree ✨ NEW
+- Collar Detachment Detection: Phát hiện khi vòng cổ bị tháo (nhịp tim ≤ 40 bpm) ✨ NEW
+- Anti-spam Mechanism: Chỉ gửi cảnh báo 1 lần/10 giây để tránh làm phiền ✨ NEW
+- Xóa Thông báo: Xóa từng thông báo cụ thể (chỉ chủ sở hữu) ✨ NEW
+- Đánh dấu Đã đọc: Đánh dấu một hoặc tất cả thông báo
+- Push notifications thời gian thực qua Socket.IO
 
 ### 📱 Real-time Updates
 - Socket.IO events cho dữ liệu sức khỏe mới
 - Cập nhật thông báo tức thì
 - BLE notifications từ collar
+
+### 🚀 Background Sync Service ✨ NEW
+- Tự động đồng bộ dữ liệu sức khỏe lên server ngay cả khi app chạy nền
+- Periodic sync mỗi 10 giây
+- BLE data buffering và anti-spam protection
+- Hoạt động trên cả iOS và Android
 
 ---
 
@@ -164,6 +174,8 @@ npm start            # Chạy Expo dev server
 - **Socket.IO Client** - Real-time communication
 - **React Native BLE PLX** - Bluetooth connectivity
 - **React Native Chart Kit** - Data visualization
+- **Expo Task Manager** - Background task execution ✨ NEW
+- **React Native Gesture Handler** - Swipeable notifications ✨ NEW
 
 ### Backend
 - **Node.js** - JavaScript runtime
@@ -173,6 +185,7 @@ npm start            # Chạy Expo dev server
 - **Socket.IO** - Real-time server
 - **bcrypt** - Password hashing
 - **Axios** - HTTP client
+- **Decision Tree AI Model** - Health classification ✨ NEW
 
 ### Hardware
 - **ESP32** - Microcontroller
@@ -207,17 +220,21 @@ BLE connection established
 Device sends health data
 ```
 
-### 2️⃣ Data Flow
+### 2️⃣ Data Flow with AI Processing ✨ NEW
 ```
 ESP32 (Hardware)
     ↓ (BLE notify)
-Mobile App
-    ↓ (HTTP POST)
+Mobile App (Background Sync)
+    ↓ (HTTP POST every 10s)
 Backend Server
+    ↓ (AI Decision Tree)
+Classify Alert Level (0/1/2)
+    ↓ (Anti-spam check)
+Create Notification if needed
     ↓ (Socket.IO emit)
-Mobile App (real-time)
+Mobile App + Database
     ↓
-Notification Alert (if threshold exceeded)
+Push Notification Alert
 ```
 
 ### 3️⃣ Pet Sharing
@@ -281,8 +298,12 @@ Chính chủ là:
 - **users** - Người dùng
 - **pets** - Thú cưng
 - **user_pets** - Liên kết nhiều-nhiều (sharing)
-- **pet_health_logs** - Lịch sử sức khỏe
-- **notifications** - Thông báo cảnh báo
+- **pet_health_logs** - Lịch sử sức khỏe (HR, Temp, Humidity, Behavior)
+- **notifications** - Thông báo cảnh báo ✨ NEW
+  - title: Health Alert hoặc Emergency Alert
+  - message: Chi tiết về lý do cảnh báo
+  - is_read: Trạng thái đã đọc
+  - created_at: Thời gian tạo
 
 Chi tiết xem [Backend README](Pet_Collar_Backend/README.md#cơ-sở-dữ-liệu)
 
@@ -315,6 +336,9 @@ Chi tiết xem [Backend README](Pet_Collar_Backend/README.md#cơ-sở-dữ-liệ
 | BLE not working | Check permissions in app.json, enable Bluetooth |
 | Hardware won't upload | Hold BOOT button, check baud rate 115200 |
 | Socket.IO events not received | Verify Socket.IO client configuration |
+| Background Sync not working | Check backend running, verify auth token ✨ NEW |
+| Notifications spam too much | Check anti-spam mechanism (10s interval) ✨ NEW |
+| AI alerts not triggering | Verify pet_ai_model.json loaded, check thresholds ✨ NEW |
 
 ---
 

@@ -127,18 +127,6 @@ export default function PetDashboardScreen() {
           const response = await axios.post('https://pet-collar-backend.onrender.com/api/health-logs', payload, { 
             headers: { Authorization: `Bearer ${token}` } 
           });
-
-          // NẾU BACKEND TRẢ VỀ CẢNH BÁO -> BẮN THÔNG BÁO LOCAL TẠI CHỖ
-          if (response.data.alert) {
-            Notifications.scheduleNotificationAsync({
-              content: { 
-                title: response.data.alert.title, 
-                body: response.data.alert.message, 
-                sound: true 
-              },
-              trigger: null,
-            });
-          }
         } catch (error) {
           console.log("Background sync error:", error);
         }
