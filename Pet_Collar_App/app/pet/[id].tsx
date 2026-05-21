@@ -15,32 +15,22 @@ import io from 'socket.io-client';
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 
-const BACKGROUND_BLE_TASK = 'BACKGROUND_BLE_TASK';
+// 🚀 IMPORT ĐÚNG INSTANCE BLE DÙNG CHUNG
+import bleService from '../../services/BLEService';
+const bleManager = bleService.manager;
 
-TaskManager.defineTask(BACKGROUND_BLE_TASK, async () => {
-  // Lõi JS sẽ được hệ điều hành giữ cho thức tỉnh nhờ Task này
-});
-const bleManager = new BleManager();
+const BACKGROUND_BLE_TASK = 'BACKGROUND_BLE_TASK';
+TaskManager.defineTask(BACKGROUND_BLE_TASK, async () => {});
 
 const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const BEHAVIOR_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
 const HEARTRATE_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
 const TEMPERATURE_CHAR_UUID = "19b10003-e8f2-537e-4f6c-d104768a1214";
 
-const BEHAVIOR_LABELS = [
-  "Idle (Nghỉ ngơi)", 
-  "Playing (Đang chơi)", 
-  "Trotting (Chạy kiệu)", 
-  "Walking (Đang đi)"
-];
+const BEHAVIOR_LABELS = [ "Idle (Nghỉ ngơi)", "Playing (Đang chơi)", "Trotting (Chạy kiệu)", "Walking (Đang đi)" ];
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
 });
 
 export default function PetDashboardScreen() {
@@ -54,8 +44,17 @@ export default function PetDashboardScreen() {
     gender: params.gender as string,
     weight: params.weight as string,
     dob: params.dob as string,
-    image_url: params.image_url as string
+    image_url: ''
   });
+  useEffect(() => {
+    const fetchPetImage = async () => {
+      const savedImage = await AsyncStorage.getItem(`pet_image_${petId}`);
+      if (savedImage) {
+        setPetInfo(prev => ({ ...prev, image_url: savedImage }));
+      }
+    };
+    fetchPetImage();
+  }, [petId]);
 
   const [connectionStatus, setConnectionStatus] = useState<string>('Connecting...');
   const [isConnected, setIsConnected] = useState(false);
@@ -64,16 +63,12 @@ export default function PetDashboardScreen() {
   const [behaviorCode, setBehaviorCode] = useState<number>(0); 
   const [activeTab, setActiveTab] = useState<'HR' | 'TEMP'>('HR');
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
-
-  // --- STATE MODAL EDIT ---
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [editGender, setEditGender] = useState('');
   const [editWeight, setEditWeight] = useState('');
   const [editDob, setEditDob] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  
-  // --- STATE CHO ẢNH MỚI ---
   const [editImageUri, setEditImageUri] = useState<string | null>(null);
   const [editImageBase64, setEditImageBase64] = useState<string | null>(null);
 
@@ -84,87 +79,49 @@ export default function PetDashboardScreen() {
     if (!dobString || dobString === 'undefined' || dobString === 'null') return 'Unknown Age';
     const birthDate = new Date(dobString);
     if (isNaN(birthDate.getTime())) return 'Unknown Age';
-
     const diffMs = Date.now() - birthDate.getTime();
     const ageDt = new Date(diffMs); 
     const years = Math.abs(ageDt.getUTCFullYear() - 1970);
     const months = ageDt.getUTCMonth();
-
     if (years > 0) return `${years} years old`;
     if (months > 0) return `${months} months old`;
     return 'Under 1 month';
   };
 
-  // ===================================================================
-  // 🧠 BỘ NÃO CHẠY NGẦM (BACKGROUND SYNC)
-  // ===================================================================
   const bleDataRef = useRef({ hr: 0, temp: 0, behavior: 0 });
   const lastSyncTime = useRef(0);
 
   const processBackgroundSync = async () => {
     const now = Date.now();
-    
-    // Chỉ gửi dữ liệu lên Server nếu đã trôi qua ít nhất 10 giây
     if (now - lastSyncTime.current >= 10000) {
       const { hr, temp, behavior } = bleDataRef.current;
-      
-      // Khắc phục lỗi spam cảnh báo khi nhịp tim = 0 (tuột vòng)
       if (hr > 0 && temp > 0) {
-        lastSyncTime.current = now; // Khóa bộ đếm thời gian
-        
+        lastSyncTime.current = now; 
         try {
           const token = await AsyncStorage.getItem('userToken');
           if (!token) return;
-
-          const payload = { 
-            pet_id: petId, 
-            behavior_code: behavior, 
-            heart_rate: hr, 
-            temp_celsius: temp, 
-            humidity: 60 
-          };
-          
-          const response = await axios.post('https://pet-collar-backend.onrender.com/api/health-logs', payload, { 
-            headers: { Authorization: `Bearer ${token}` } 
-          });
-        } catch (error) {
-          console.log("Background sync error:", error);
-        }
+          const payload = { pet_id: petId, behavior_code: behavior, heart_rate: hr, temp_celsius: temp, humidity: 60 };
+          await axios.post('https://pet-collar-backend.onrender.com/api/health-logs', payload, { headers: { Authorization: `Bearer ${token}` } });
+        } catch (error) { console.log("Background sync error:", error); }
       }
     }
   };
 
-  // ===================================================================
-  // THIẾT LẬP LỊCH SỬ & SOCKET
-  // ===================================================================
   useEffect(() => {
     let socket: any;
-
     const fetchHistoryAndSetupSocket = async () => {
       try {
         const token = await AsyncStorage.getItem('userToken');
         const historyResponse = await axios.get(`https://pet-collar-backend.onrender.com/api/pets/${petId}/health-logs`, { headers: { Authorization: `Bearer ${token}` } });
-        if (historyResponse.data.status === 'success') {
-          setHistoryLogs(historyResponse.data.data);
-        }
+        if (historyResponse.data.status === 'success') setHistoryLogs(historyResponse.data.data);
       } catch (error) {}
-
-      const { status } = await Notifications.requestPermissionsAsync();
-      
       const userInfoString = await AsyncStorage.getItem('userInfo');
       if (userInfoString) {
         const user = JSON.parse(userInfoString);
-        const userId = user.user_id || user.id;
-
         socket = io('https://pet-collar-backend.onrender.com'); 
-
-        socket.on(`new_alert_user_${userId}`, (alertData: any) => {
-          Notifications.scheduleNotificationAsync({
-            content: { title: alertData.title, body: alertData.message, sound: true },
-            trigger: null,
-          });
+        socket.on(`new_alert_user_${user.user_id || user.id}`, (alertData: any) => {
+          Notifications.scheduleNotificationAsync({ content: { title: alertData.title, body: alertData.message, sound: true }, trigger: null });
         });
-
         socket.on(`new_health_data_${petId}`, (newData: any) => {
           setConnectionStatus((currentStatus) => {
             if (currentStatus !== 'Connected') {
@@ -174,128 +131,87 @@ export default function PetDashboardScreen() {
             }
             return currentStatus;
           });
-
-          setHistoryLogs((prev) => {
-            const updated = [newData, ...prev];
-            return updated.slice(0, 6);
-          });
+          setHistoryLogs((prev) => { const updated = [newData, ...prev]; return updated.slice(0, 6); });
         });
       }
     };
-
     fetchHistoryAndSetupSocket();
     return () => { if (socket) socket.disconnect(); };
   }, [petId]);
 
+  // 1. CHẠY NGAY LẬP TỨC KHÔNG CHỜ ĐỢI HIỆU ỨNG (HẾT LAG)
   useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
-      handleConnect();
-    });
+    handleConnect();
+
+    // 2. KHI BẤM BACK: Chỉ hủy luồng nghe của màn hình này, KHÔNG ngắt kết nối thiết bị!
+    // (Để trang Home vẫn tiếp tục chạy ngầm)
     return () => {
-      task.cancel();
+      bleManager.cancelTransaction(`detail_${mac}_hr`);
+      bleManager.cancelTransaction(`detail_${mac}_temp`);
+      bleManager.cancelTransaction(`detail_${mac}_behavior`);
     };
   }, [mac]);
 
-  // ===================================================================
-  // 🛡️ XỬ LÝ QUYỀN CHẠY NGẦM (Tách lớp cho Android 11+)
-  // ===================================================================
-  const requestBackgroundService = async () => {
-    try {
-      // BƯỚC 1: Xin quyền Foreground trước
-      const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-      if (fgStatus !== 'granted') {
-        Alert.alert("Lưu ý", "Ứng dụng cần quyền vị trí để duy trì Bluetooth.");
-        return;
-      }
-
-      // BƯỚC 2: Xin quyền Background sau (Android mới hiện tùy chọn 'Allow all the time')
-      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-      if (bgStatus !== 'granted') {
-        Alert.alert(
-          "Cần cấp quyền thủ công", 
-          "Để nhận cảnh báo khi tắt màn hình, hãy vào Cài đặt -> Vị trí -> Chọn 'Luôn cho phép'.",
-          [
-            { text: "Bỏ qua", style: "cancel" },
-            { text: "Mở Cài đặt", onPress: () => Linking.openSettings() }
-          ]
-        );
-        return;
-      }
-
-      // BƯỚC 3: Kích hoạt dịch vụ tiền cảnh
-      await Location.startLocationUpdatesAsync(BACKGROUND_BLE_TASK, {
-        accuracy: Location.Accuracy.Low,
-        showsBackgroundLocationIndicator: false,
-        foregroundService: {
-          notificationTitle: 'Pet Smart Collar',
-          notificationBody: 'Đang theo dõi sức khỏe thú cưng...',
-          notificationColor: '#FDCB58',
-        },
-      });
-    } catch (err) {
-      console.log("Background Task Error:", err);
-    }
-  };
-
-  // ===================================================================
-  // 🚀 KẾT NỐI BLE (Sửa lỗi xung đột khi chuyển trang)
-  // ===================================================================
+  // 3. THUẬT TOÁN KẾT NỐI KHÔNG XUNG ĐỘT
   const handleConnect = async () => {
     if (!mac) return;
     setConnectionStatus('Connecting...');
     setIsConnected(false);
     
     try {
-      // Khởi động Background Service song song
-      requestBackgroundService();
-
+      await AsyncStorage.removeItem(`manual_disconnect_${mac}`);
       let device;
       const isAlreadyConnected = await bleManager.isDeviceConnected(mac);
 
       if (isAlreadyConnected) {
-        // Tái sử dụng kết nối từ trang Home (Tránh lỗi Disconnected ảo)
+        // Thiết bị đang được trang Home kết nối rồi, ta chỉ việc "ké" vào thôi
         const connectedDevices = await bleManager.connectedDevices([SERVICE_UUID]);
         device = connectedDevices.find(d => d.id === mac);
-        if (!device) device = await bleManager.connectToDevice(mac);
+        if (!device) {
+          device = await bleManager.connectToDevice(mac);
+          await device.discoverAllServicesAndCharacteristics();
+        }
       } else {
         device = await bleManager.connectToDevice(mac);
+        await device.discoverAllServicesAndCharacteristics();
       }
 
-      await device.discoverAllServicesAndCharacteristics();
       setConnectionStatus('Connected');
       setIsConnected(true);
 
+      // 4. BÍ QUYẾT TRÁNH LỖI EXPO: THÊM MÃ GIAO DỊCH (TRANSACTION ID)
+      // Chèn `detail_${mac}_...` vào cuối để tách biệt luồng này với luồng của trang Home
+      
       device.monitorCharacteristicForService(SERVICE_UUID, HEARTRATE_CHAR_UUID, (error, char) => {
         if (char?.value) {
           const val = atob(char.value).charCodeAt(0);
           setHeartRate(val);
-          bleDataRef.current.hr = val;
-          processBackgroundSync(); // Kích hoạt luồng phản xạ
         }
-      });
+      }, `detail_${mac}_hr`);
+
       device.monitorCharacteristicForService(SERVICE_UUID, TEMPERATURE_CHAR_UUID, (error, char) => {
         if (char?.value) {
-          const val = parseFloat(atob(char.value));
-          setTemperature(val.toString());
-          bleDataRef.current.temp = val;
-          processBackgroundSync(); // Kích hoạt luồng phản xạ
+          const tempVal = parseFloat(atob(char.value));
+          if (!isNaN(tempVal)) {
+            setTemperature(tempVal.toFixed(1));
+          }
         }
-      });
+      }, `detail_${mac}_temp`);
+
       device.monitorCharacteristicForService(SERVICE_UUID, BEHAVIOR_CHAR_UUID, (error, char) => {
         if (char?.value) {
           const val = atob(char.value).charCodeAt(0);
           setBehaviorCode(val);
-          bleDataRef.current.behavior = val;
-          processBackgroundSync(); // Kích hoạt luồng phản xạ
         }
-      });
+      }, `detail_${mac}_behavior`);
 
       bleManager.onDeviceDisconnected(mac, () => {
-        setConnectionStatus('Disconnected');
-        setIsConnected(false);
-        setHeartRate('--');
+        setConnectionStatus('Disconnected'); 
+        setIsConnected(false); 
+        setHeartRate('--'); 
         setTemperature('--');
       });
+
     } catch (error) {
       console.log("Connect Error:", error);
       setConnectionStatus('Disconnected');
@@ -305,20 +221,10 @@ export default function PetDashboardScreen() {
 
   const handleDisconnect = async () => {
     try {
+      await AsyncStorage.setItem(`manual_disconnect_${mac}`, 'true');
       await bleManager.cancelDeviceConnection(mac);
-      
-      const hasStarted = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_BLE_TASK);
-      if (hasStarted) {
-        await Location.stopLocationUpdatesAsync(BACKGROUND_BLE_TASK);
-      }
-
-      setConnectionStatus('Disconnected');
-      setIsConnected(false);
-      setHeartRate('--');
-      setTemperature('--');
-    } catch (error) {
-      console.log("Disconnect error", error);
-    }
+      setConnectionStatus('Disconnected'); setIsConnected(false); setHeartRate('--'); setTemperature('--');
+    } catch (error) { console.log(error); }
   };
 
   const pickImage = async () => {

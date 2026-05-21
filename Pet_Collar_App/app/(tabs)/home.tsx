@@ -11,6 +11,7 @@ import { BleManager, Device } from 'react-native-ble-plx';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as TaskManager from 'expo-task-manager';
 import io from 'socket.io-client';
+import * as Location from 'expo-location';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 const bleManager = new BleManager();
 
@@ -60,6 +61,7 @@ export default function HomeScreen() {
   const [userName, setUserName] = useState('User');
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
   // Global Real-time States for Multiple Devices
   const [devicesState, setDevicesState] = useState<Record<number, DeviceStatus>>({});
   const activeConnections = useRef<Record<number, Device>>({});
@@ -102,25 +104,38 @@ export default function HomeScreen() {
   // 1. Hệ thống Nghe Thông báo Khẩn cấp Toàn cục (Global Socket)
   useEffect(() => {
     let socket: any;
-    // Hàm khởi động Chạy ngầm
-    // Khởi động Chạy ngầm chuyên dụng cho BLE (Không cần Location)
+
+    // Chuyển toàn bộ logic xin quyền và bật Location Background vào đây
     const startBackgroundService = async () => {
       try {
-        const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_BLE_TASK);
-        if (!isRegistered) {
-           // Bắt đầu một tiến trình chạy nền không định kiểu (Custom Background Fetch)
-           console.log("🚀 Bật tiến trình nền giữ kết nối BLE...");
-           // Đăng ký Task (không dùng Location)
-           // Lưu ý: react-native-ble-plx khi cắm cờ isBackgroundEnabled=true 
-           // sẽ tự động giữ luồng JS sống khi màn hình tắt, miễn là có thiết bị đang kết nối.
+        const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+        if (fgStatus === 'granted') {
+          const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+          if (bgStatus === 'granted') {
+            const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_BLE_TASK);
+            if (!isRegistered) {
+              await Location.startLocationUpdatesAsync(BACKGROUND_BLE_TASK, {
+                accuracy: Location.Accuracy.Low,
+                showsBackgroundLocationIndicator: false,
+                foregroundService: {
+                  notificationTitle: 'Pet Smart Collar',
+                  notificationBody: 'Đang theo dõi sức khỏe thú cưng',
+                  notificationColor: '#FDCB58',
+                },
+              });
+              console.log("🚀 Bật tiến trình nền giữ kết nối BLE thành công!");
+            }
+          }
         }
       } catch (err) {
         console.log("Background Task Error:", err);
       }
     };
+
     const setupGlobalRealtimeEngine = async () => {
       await Notifications.requestPermissionsAsync();
-      await startBackgroundService();
+      await startBackgroundService(); // Khởi động chạy ngầm ngay khi vào app
+
       const userInfoString = await AsyncStorage.getItem('userInfo');
       if (userInfoString) {
         const user = JSON.parse(userInfoString);
@@ -137,6 +152,7 @@ export default function HomeScreen() {
         });
       }
     };
+
     setupGlobalRealtimeEngine();
     return () => { if (socket) socket.disconnect(); };
   }, []);
@@ -144,14 +160,26 @@ export default function HomeScreen() {
   // 2. Hệ thống Theo dõi Thiết bị & Đa kết nối BLE
   useEffect(() => {
     if (pets.length === 0) return;
-    const devicesToConnect = pets.slice(0, 3); // Giới hạn tối đa 3 thiết bị
+    const devicesToConnect = pets.slice(0, 3);
 
-    devicesToConnect.forEach((pet) => {
-      if (activeConnections.current[pet.pet_id] || devicesState[pet.pet_id]?.status === 'Connected') return;
-      connectDeviceInBackground(pet.pet_id, pet.mac_address);
-    });
+    const processAutoConnect = async () => {
+      for (const pet of devicesToConnect) {
+        const isIntentionallyDisconnected = await AsyncStorage.getItem(`manual_disconnect_${pet.mac_address}`);
+        if (isIntentionallyDisconnected === 'true') {
+          continue; 
+        }
+
+        if (activeConnections.current[pet.pet_id] || devicesState[pet.pet_id]?.status === 'Connected') continue;
+        
+        // Thêm await để kết nối BLE tuần tự, tránh xung đột thiết bị
+        await connectDeviceInBackground(pet.pet_id, pet.mac_address);
+      }
+    };
+
+    processAutoConnect();
 
     const socket = io('https://pet-collar-backend.onrender.com');
+    // ... (Giữ nguyên phần code socket.on bên dưới của bạn)
     devicesToConnect.forEach((pet) => {
       socket.off(`new_health_data_${pet.pet_id}`);
       socket.on(`new_health_data_${pet.pet_id}`, (newData: any) => {
@@ -168,6 +196,7 @@ export default function HomeScreen() {
   }, [pets]);
 
   // 3. Hàm Xử lý Kết nối BLE Ngầm
+  // 3. Hàm Xử lý Kết nối BLE Ngầm (Đã tối ưu cho Background)
   const connectDeviceInBackground = async (petId: number, macAddress: string) => {
     if (!macAddress) return;
     setDevicesState(prev => ({ ...prev, [petId]: { status: 'Connecting', heartRate: '--', temperature: '--' } }));
@@ -182,42 +211,90 @@ export default function HomeScreen() {
       let localHR: number | string = '--';
       let localTemp: string | number = '--';
       let localBehavior = 0;
+      
+      // Biến theo dõi thời gian thay cho setInterval
+      let lastSyncTime = Date.now();
 
-      const dataSyncTimer = setInterval(async () => {
-        if (localHR !== '--' && localTemp !== '--') {
-          try {
-            const token = await AsyncStorage.getItem('userToken');
-            if (token) {
-              await axios.post('https://pet-collar-backend.onrender.com/api/health-logs', {
-                pet_id: petId, behavior_code: localBehavior, heart_rate: Number(localHR), temp_celsius: Number(localTemp), humidity: 60
-              }, { headers: { Authorization: `Bearer ${token}` } });
+      // Hàm xử lý đồng bộ API - Sẽ được gọi mỗi khi có dữ liệu BLE mới gửi tới
+      const triggerBackgroundSync = async () => {
+        const now = Date.now();
+        // Chỉ gửi dữ liệu lên Server nếu đã trôi qua ít nhất 10 giây
+        if (now - lastSyncTime >= 10000) {
+          lastSyncTime = now; // Cập nhật lại mốc thời gian
+
+          if (localHR !== '--' && localTemp !== '--') {
+            try {
+              const token = await AsyncStorage.getItem('userToken');
+              if (token) {
+                const response = await axios.post('https://pet-collar-backend.onrender.com/api/health-logs', {
+                  pet_id: petId, 
+                  behavior_code: localBehavior, 
+                  heart_rate: Number(localHR), 
+                  temp_celsius: Number(localTemp), 
+                  humidity: 60
+                }, { headers: { Authorization: `Bearer ${token}` } });
+
+                // Nhận cảnh báo thẳng từ Response API (không phụ thuộc Socket)
+                if (response.data && response.data.alert) {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: response.data.alert.title || "🚨 Cảnh Báo Sức Khỏe",
+                      body: response.data.alert.message,
+                      sound: true,
+                      priority: Notifications.AndroidNotificationPriority.HIGH,
+                    },
+                    trigger: null, // Nổ ngay lập tức
+                  });
+                }
+              }
+            } catch (err) {
+              console.log(`[PET ${petId}] Lỗi đồng bộ ngầm:`, err);
             }
-          } catch (err) {}
+          }
         }
-      }, 10000);
+      };
 
+      // Lắng nghe Nhịp tim (Mỗi lần có dữ liệu, kiểm tra xem đã đủ 10s để gửi API chưa)
       device.monitorCharacteristicForService(SERVICE_UUID, HEARTRATE_CHAR_UUID, (err, char) => {
         if (char?.value) {
           localHR = atob(char.value).charCodeAt(0);
           setDevicesState(prev => ({ ...prev, [petId]: { ...prev[petId], heartRate: localHR } }));
+          triggerBackgroundSync(); // <--- Kích hoạt hàm kiểm tra
         }
       });
 
+      // Lắng nghe Nhiệt độ
       device.monitorCharacteristicForService(SERVICE_UUID, TEMPERATURE_CHAR_UUID, (err, char) => {
         if (char?.value) {
           localTemp = atob(char.value);
           setDevicesState(prev => ({ ...prev, [petId]: { ...prev[petId], temperature: localTemp } }));
+          triggerBackgroundSync(); // <--- Kích hoạt hàm kiểm tra
         }
       });
 
+      // Lắng nghe Hành vi
       device.monitorCharacteristicForService(SERVICE_UUID, BEHAVIOR_CHAR_UUID, (err, char) => {
-        if (char?.value) localBehavior = atob(char.value).charCodeAt(0);
+        if (char?.value) {
+          localBehavior = atob(char.value).charCodeAt(0);
+        }
       });
 
-      bleManager.onDeviceDisconnected(macAddress, () => {
-        clearInterval(dataSyncTimer);
+      bleManager.onDeviceDisconnected(macAddress, async () => {
         delete activeConnections.current[petId];
         setDevicesState(prev => ({ ...prev, [petId]: { status: 'Disconnected', heartRate: '--', temperature: '--' } }));
+
+        const totalActiveConnections = Object.keys(activeConnections.current).length;
+        if (totalActiveConnections === 0) {
+          try {
+            const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_BLE_TASK);
+            if (isRegistered) {
+              await Location.stopLocationUpdatesAsync(BACKGROUND_BLE_TASK);
+              console.log("🛑 Dịch vụ nền đã dừng an toàn do không còn thiết bị.");
+            }
+          } catch (error) {
+            console.log("Không thể dừng Task:", error);
+          }
+        }
       });
     } catch (error) {
       setDevicesState(prev => ({ ...prev, [petId]: { status: 'Disconnected', heartRate: '--', temperature: '--' } }));
@@ -548,9 +625,33 @@ const handleChangePassword = async () => {
     return (
       <TouchableOpacity 
         style={[styles.petCard, { backgroundColor: bgColor }, isSelected && { borderWidth: 3, borderColor: '#FDCB58', padding: 12 }]}
-        onPress={() => {
-          if (isInSelectionMode) toggleSelection(item.pet_id);
-          else router.push({ pathname: '/pet/[id]', params: { id: item.pet_id, mac: item.mac_address, name: item.name, gender: item.gender ? String(item.gender) : '', weight: item.weight ? String(item.weight) : '', dob: item.dob ? String(item.dob) : '', image_url: item.image_url ? String(item.image_url) : '' } });
+        onPress={async () => {
+          if (isInSelectionMode) {
+            toggleSelection(item.pet_id);
+          } else {
+            if (isNavigating) return; // 🛡️ Chặn click đúp
+            setIsNavigating(true);
+
+            // 🧠 Lưu ảnh vào bộ nhớ tạm, tuyệt đối không đưa vào URL
+            await AsyncStorage.setItem('currentPetId', item.pet_id.toString());
+            await AsyncStorage.setItem(`pet_image_${item.pet_id}`, item.image_url || '');
+
+            router.push({ 
+              pathname: '/pet/[id]', 
+              params: { 
+                id: item.pet_id, 
+                mac: item.mac_address, 
+                name: item.name, 
+                gender: item.gender ? String(item.gender) : '', 
+                weight: item.weight ? String(item.weight) : '', 
+                dob: item.dob ? String(item.dob) : '' 
+                // ĐÃ XÓA IMAGE_URL Ở ĐÂY ĐỂ TRÁNH LAG
+              } 
+            });
+
+            // Mở khóa sau 1 giây (đề phòng user bấm Back quay lại ngay)
+            setTimeout(() => setIsNavigating(false), 1000);
+          }
         }}
         onLongPress={() => handleLongPress(item.pet_id)}
         activeOpacity={0.8}
